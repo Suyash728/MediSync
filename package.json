@@ -1,0 +1,12 @@
+{
+  "name": "medisync",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently --names \"backend,frontend\" --prefix-colors \"cyan.bold,green.bold\" --kill-others-on-fail \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "cd backend && uvicorn main:app --reload --port 8000",
+    "dev:frontend": "cd frontend && npm run dev"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.3"
+  }
+}
