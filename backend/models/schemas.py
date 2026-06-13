@@ -16,6 +16,8 @@ from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, Field
+from typing import TypeVar, Generic
+T = TypeVar('T')
 
 
 # ─── Enums ────────────────────────────────────────────────────────────────────
@@ -184,7 +186,7 @@ class AccessLog(BaseModel):
 
 # ─── Pagination wrapper ───────────────────────────────────────────────────────
 
-class PaginatedResponse[T](BaseModel):
+class PaginatedResponse(BaseModel, Generic[T]):
     items:     list[T]
     total:     int
     page:      int

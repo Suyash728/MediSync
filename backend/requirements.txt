@@ -1,3 +1,5 @@
+--extra-index-url https://download.pytorch.org/whl/cpu        # For CPU-only PyTorch; remove if using GPU version
+
 # ── Web framework ─────────────────────────────────────────────────────────────
 fastapi==0.111.0
 uvicorn[standard]==0.30.1

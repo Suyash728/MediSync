@@ -147,3 +147,14 @@
 
 ~~***copied with light edits. Everything in the "new" list below is built fresh this phase.**
 
+## Python version note
+Backend venv is Python 3.11. Do NOT use PEP 695 generic syntax (class Foo[T]).
+Use typing.TypeVar + Generic[T] instead.
+
+## Supabase SQL note
+Always include GRANT statements after CREATE TABLE + RLS. 
+service_role, authenticated, and anon all need explicit GRANT 
+even when service_role bypasses RLS.
+
+## Groq model
+Use llama-3.3-70b-versatile (llama-3.1-70b-versatile is decommissioned).
