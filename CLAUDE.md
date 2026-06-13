@@ -158,3 +158,8 @@ even when service_role bypasses RLS.
 
 ## Groq model
 Use llama-3.3-70b-versatile (llama-3.1-70b-versatile is decommissioned).
+
+## Gemini SDK
+Use the new google-genai SDK (from google import genai; genai.Client()).
+NOT the deprecated google.generativeai package (EOL Nov 30 2025).
+Model: gemini-3.5-flash (text + vision).

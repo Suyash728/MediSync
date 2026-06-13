@@ -1,25 +1,38 @@
 """
-POST /upload — Document ingestion pipeline.
+POST /upload — Document ingestion pipeline (refactored Phase 1 patch).
 
-Full flow (synchronous within the request for hackathon simplicity):
-  1. Verify JWT  →  get patient_id
-  2. Validate file type (PDF / JPEG / PNG only)
-  3. Save raw bytes to a temp file  →  upload to Supabase Storage
-  4. Create health_records row (status=processing)
-  5. OCR  →  raw_text
-  6. BioBERT NER + regex  →  entities dict
-  7. Map entities  →  medications[] + lab_values[]
-  8. LLM  →  patient-facing summary
-  9. Insert medications[] and lab_values[] rows
- 10. Update health_records (status=done, summary, raw_text)
- 11. Return the full record + extracted rows
+Pipeline (in order):
+  1.  Verify JWT → get patient_id
+  2.  Validate file type (PDF / JPEG / PNG) and size (≤ 20 MB)
+  3.  Save raw bytes to a temp file → upload to Supabase Storage
+  4.  Create health_records row (status=processing)
+  5.  OCR → raw_text
+        PDF with native text layer → PyMuPDF
+        Scanned PDF / images → Gemini Vision (Tesseract fallback)
+  6.  LLM structured extraction (PRIMARY) → extract_structured_async()
+        Groq llama-3.3-70b-versatile in JSON mode → typed dict
+        {medications, lab_values, diagnoses, document_date, summary, …}
+  7.  BioBERT NER (SECONDARY) → extract_entities_async()
+        Merge NER-found drugs / lab values not already in LLM output;
+        those additions are flagged low_confidence=True.
+  8.  Map merged extraction dict → medications[] and lab_values[] DB rows
+  9.  Insert extracted rows
+  10. Determine final status:
+        failed       — pipeline error
+        needs_review — no medications AND no lab values found (empty extraction)
+        done         — at least one medication or lab value extracted
+  11. Update health_records row (status, summary, raw_text)
+  12. Write access_log row (audit trail)
+  13. Return the full record + extracted rows
 
-Error handling: if any pipeline step fails, the record is marked
-status=failed with processing_error populated.  We never leave a row
-in 'processing' state permanently.
+Error handling: any unhandled exception in steps 5–9 marks the record as
+'failed' with processing_error populated.  We never leave a record stuck in
+'processing' state permanently.
 
-Note on async:  OCR and NER are CPU-bound.  They run via asyncio.to_thread()
-so the event loop is not blocked.  LLM is I/O-bound and uses AsyncGroq.
+Async notes:
+  - OCR (PyMuPDF + Gemini Vision / Tesseract) is CPU-bound/blocking → to_thread().
+  - NER (BioBERT model inference) is CPU-bound → to_thread().
+  - LLM extraction (AsyncGroq) is I/O-bound → truly async.
 """
 
 import logging
@@ -29,7 +42,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, Form, status
 
-from models.schemas import MedicalRecord, ProcessingStatus, RecordType
+from models.schemas import ProcessingStatus, RecordType
 from services import ocr, ner, llm
 from utils.auth import get_current_patient
 from utils.db import get_supabase
@@ -39,8 +52,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# Maximum upload size: 20 MB
-MAX_UPLOAD_BYTES = 20 * 1024 * 1024
+MAX_UPLOAD_BYTES = 20 * 1024 * 1024   # 20 MB
 
 
 @router.post(
@@ -53,16 +65,16 @@ async def upload_document(
     file:          UploadFile,
     record_type:   str = Form(...),
     title:         str = Form(...),
-    document_date: str = Form(...),   # ISO date string "YYYY-MM-DD"
+    document_date: str = Form(...),
     facility:      str = Form(""),
     doctor:        str = Form(""),
     patient_id:    str = Depends(get_current_patient),
 ) -> dict:
-    """Accept a medical document, run the full parsing pipeline, and persist results.
+    """Accept a medical document, run the full parsing pipeline, persist results.
 
-    Requires:  Authorization: Bearer <supabase_access_token>
-    Body:      multipart/form-data with fields above + file
-    Returns:   The newly-created health_record with extracted medications and lab values.
+    Authorization: Bearer <supabase_access_token>
+    Body: multipart/form-data (file + metadata fields above)
+    Returns: The newly-created health_record with extracted medications and lab values.
     """
 
     # ── 1. Validate inputs ────────────────────────────────────────────────────
@@ -87,10 +99,10 @@ async def upload_document(
             detail="File exceeds 20 MB limit.",
         )
 
-    # ── 2. Generate IDs and save to Storage ───────────────────────────────────
+    # ── 2. Upload to Supabase Storage ─────────────────────────────────────────
 
-    record_id  = str(uuid.uuid4())
-    supabase   = get_supabase()
+    record_id = str(uuid.uuid4())
+    supabase  = get_supabase()
 
     try:
         storage_path = upload_file(
@@ -106,7 +118,7 @@ async def upload_document(
             detail="Failed to store file. Please try again.",
         )
 
-    # ── 3. Create the health_records row (status=processing) ─────────────────
+    # ── 3. Create health_records row (status=processing) ─────────────────────
 
     record_row = {
         "id":                record_id,
@@ -117,120 +129,262 @@ async def upload_document(
         "facility":          facility or None,
         "doctor":            doctor or None,
         "file_path":         storage_path,
-        "processing_status": "processing",
+        "processing_status": ProcessingStatus.processing.value,
     }
-
     supabase.table("health_records").insert(record_row).execute()
 
-    # ── 4. Run the parsing pipeline ───────────────────────────────────────────
-    # We wrap in try/except so a pipeline failure marks the record as 'failed'
-    # rather than leaving it stuck in 'processing'.
+    # ── 4–9. Pipeline ─────────────────────────────────────────────────────────
+    # Everything inside the try block is wrapped so failures mark the record
+    # as 'failed' instead of leaving it in 'processing' forever.
 
-    raw_text      = ""
-    entities:  dict = {}
-    summary:   str  = ""
-    error_msg: str | None = None
+    raw_text:    str  = ""
+    extracted:   dict = {}
+    summary:     str  = ""
+    error_msg:   str | None = None
 
-    # 4a. Write bytes to a temp file for OCR (both fitz and Tesseract need a path)
-    suffix = Path(file.filename or "doc").suffix or ALLOWED_TYPES[content_type]
+    suffix = Path(file.filename or "doc").suffix or ALLOWED_TYPES.get(content_type, ".bin")
+
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         tmp.write(file_bytes)
         tmp_path = tmp.name
 
     try:
-        # 4b. OCR — CPU-bound, runs in thread pool
-        logger.info("[%s] OCR start", record_id[:8])
+        # ── 4. OCR ───────────────────────────────────────────────────────────
+        # Enhanced routing: native PDF text → Gemini Vision → Tesseract.
+        # The decision is made inside ocr.extract_text(); we just call it here.
+        logger.info("[%s] OCR start (type=%s)", record_id[:8], content_type)
         raw_text = await ocr.extract_text_async(tmp_path, content_type)
         logger.info("[%s] OCR done: %d chars", record_id[:8], len(raw_text))
 
-        # 4c. NER — CPU-bound, runs in thread pool
-        logger.info("[%s] NER start", record_id[:8])
-        entities = await ner.extract_entities_async(raw_text)
+        # ── 5. LLM structured extraction (PRIMARY) ───────────────────────────
+        # Groq receives the raw OCR text and returns a structured JSON dict.
+        # This replaces BioBERT NER as the primary data source because LLMs
+        # understand clinical context and can extract dosage/frequency/abnormality
+        # without needing separate regex passes over a context window.
+        logger.info("[%s] LLM extraction start", record_id[:8])
+        extracted = await llm.extract_structured_async(raw_text)
         logger.info(
-            "[%s] NER done: %d meds, %d labs, %d diagnoses",
+            "[%s] LLM extraction done: %d meds, %d labs, %d diagnoses",
             record_id[:8],
-            len(entities.get("medications", [])),
-            len(entities.get("lab_values", [])),
-            len(entities.get("diagnoses", [])),
+            len(extracted.get("medications", [])),
+            len(extracted.get("lab_values", [])),
+            len(extracted.get("diagnoses", [])),
         )
 
-        # 4d. LLM summary — I/O-bound, truly async
-        logger.info("[%s] LLM start", record_id[:8])
-        summary = await llm.summarise_record_async(raw_text, entities)
-        logger.info("[%s] LLM done", record_id[:8])
+        # ── 6. BioBERT NER (SECONDARY) ───────────────────────────────────────
+        # Run NER and merge any drug/lab names it found that the LLM missed.
+        # NER-only additions are marked low_confidence=True to signal they were
+        # not confirmed by the structured extraction step.
+        logger.info("[%s] NER start (secondary signal)", record_id[:8])
+        ner_entities = await ner.extract_entities_async(raw_text)
+        _merge_ner_secondary(extracted, ner_entities)
+        logger.info("[%s] NER merge done", record_id[:8])
+
+        # ── 7. Clinical summary ───────────────────────────────────────────────
+        # Summary uses the now-merged extraction dict so it reflects both LLM
+        # and NER findings.
+        logger.info("[%s] Summary start", record_id[:8])
+        summary = await llm.summarise_record_async(raw_text, extracted)
+        logger.info("[%s] Summary done", record_id[:8])
 
     except Exception as exc:
         error_msg = str(exc)
-        logger.error("[%s] Pipeline error: %s", record_id[:8], exc)
+        logger.error("[%s] Pipeline error: %s", record_id[:8], exc, exc_info=True)
     finally:
-        # Always clean up the temp file
         try:
             Path(tmp_path).unlink(missing_ok=True)
         except Exception:
             pass
 
-    # ── 5. Map NER output → DB rows ───────────────────────────────────────────
+    # ── 8. Map extraction output → DB rows ────────────────────────────────────
 
     medications_rows: list[dict] = []
     lab_value_rows:   list[dict] = []
 
-    if entities and not error_msg:
-        medications_rows, lab_value_rows = ner.map_ner_to_schema(
-            entities=entities,
-            raw_text=raw_text,
-            document_date=document_date or None,
-            patient_id=patient_id,
-            record_id=record_id,
+    if extracted and not error_msg:
+        medications_rows = _build_medication_rows(
+            extracted.get("medications", []), patient_id, record_id, document_date or None,
+        )
+        lab_value_rows = _build_lab_value_rows(
+            extracted.get("lab_values", []), patient_id, record_id, document_date or None,
         )
 
-    # ── 6. Persist extracted rows ─────────────────────────────────────────────
+    # ── 9. Persist extracted rows ─────────────────────────────────────────────
 
     if medications_rows:
         supabase.table("medications").insert(medications_rows).execute()
-        logger.info("[%s] Inserted %d medication rows", record_id[:8], len(medications_rows))
+        logger.info("[%s] Inserted %d medication rows.", record_id[:8], len(medications_rows))
 
     if lab_value_rows:
         supabase.table("lab_values").insert(lab_value_rows).execute()
-        logger.info("[%s] Inserted %d lab_value rows", record_id[:8], len(lab_value_rows))
+        logger.info("[%s] Inserted %d lab_value rows.", record_id[:8], len(lab_value_rows))
 
-    # ── 7. Update health_records ──────────────────────────────────────────────
+    # ── 10. Determine final status ─────────────────────────────────────────────
+    # needs_review: extraction completed with no structured output at all.
+    # This signals the patient that they should check the document manually —
+    # not that processing failed, just that the parser found nothing to extract.
+
+    if error_msg:
+        final_status = ProcessingStatus.failed.value
+    elif not medications_rows and not lab_value_rows:
+        final_status = ProcessingStatus.needs_review.value
+        logger.info("[%s] No meds or labs extracted — marking needs_review.", record_id[:8])
+    else:
+        final_status = ProcessingStatus.done.value
+
+    # ── 11. Update health_records ─────────────────────────────────────────────
 
     update_payload: dict = {
         "raw_text":          raw_text or None,
         "summary":           summary or None,
-        "processing_status": "failed" if error_msg else "done",
+        "processing_status": final_status,
         "processing_error":  error_msg,
     }
-
     supabase.table("health_records").update(update_payload).eq("id", record_id).execute()
 
-    # ── 8. Write access log row ───────────────────────────────────────────────
-    # Every record creation is logged (even failures) for the audit trail.
+    # ── 12. Write access_log ──────────────────────────────────────────────────
+
     supabase.table("access_log").insert({
         "patient_id": patient_id,
         "record_id":  record_id,
-        "action":     "view",           # creation counts as first view
+        "action":     "view",
         "actor_type": "patient",
         "actor_id":   patient_id,
         "metadata": {
             "event":       "upload",
             "record_type": record_type,
             "file_name":   file.filename,
-            "status":      "failed" if error_msg else "done",
+            "status":      final_status,
         },
     }).execute()
 
-    # ── 9. Build response ─────────────────────────────────────────────────────
+    # ── 13. Build and return response ─────────────────────────────────────────
 
     return {
         "record": {
             **record_row,
             "raw_text":          raw_text or None,
             "summary":           summary or None,
-            "processing_status": "failed" if error_msg else "done",
+            "processing_status": final_status,
             "processing_error":  error_msg,
         },
         "medications": medications_rows,
         "lab_values":  lab_value_rows,
-        "diagnoses":   entities.get("diagnoses", []) if entities else [],
+        "diagnoses":   extracted.get("diagnoses", []) if extracted else [],
     }
+
+
+# ── Helpers: NER secondary merge ──────────────────────────────────────────────
+
+def _merge_ner_secondary(extracted: dict, ner_entities: dict) -> None:
+    """Merge BioBERT NER findings into the LLM-extracted dict (in-place).
+
+    Only adds entries the LLM missed — it never overwrites LLM data.
+    NER additions are marked with '_from_ner': True so they can be stored
+    as low_confidence in the DB (see _build_medication_rows / _build_lab_value_rows).
+    """
+    # ── Medications: add drug names found by NER but absent from LLM output ──
+    existing_drugs = {
+        (m.get("drug_name") or "").lower()
+        for m in extracted.get("medications", [])
+        if m.get("drug_name")
+    }
+    for ner_med in ner_entities.get("medications", []):
+        name = (ner_med.get("text") or "").strip()
+        if name and name.lower() not in existing_drugs:
+            extracted.setdefault("medications", []).append({
+                "drug_name":  name,
+                "dosage":     None,
+                "frequency":  None,
+                "_from_ner":  True,
+                "_ner_score": round(float(ner_med.get("score", 0.0)), 3),
+            })
+            existing_drugs.add(name.lower())
+
+    # ── Lab values: add tests found by NER regex but absent from LLM output ──
+    existing_tests = {
+        (lv.get("test_name") or "").lower()
+        for lv in extracted.get("lab_values", [])
+        if lv.get("test_name")
+    }
+    for ner_lab in ner_entities.get("lab_values", []):
+        name = (ner_lab.get("name") or "").strip()
+        if name and name.lower() not in existing_tests:
+            extracted.setdefault("lab_values", []).append({
+                "test_name":       name,
+                "value":           ner_lab.get("value", ""),
+                "unit":            ner_lab.get("unit") or None,
+                "reference_range": None,
+                "is_abnormal":     False,   # can't confirm without reference range
+                "_from_ner":       True,
+            })
+            existing_tests.add(name.lower())
+
+
+# ── Helpers: map extraction dicts → DB row dicts ──────────────────────────────
+
+def _build_medication_rows(
+    medications: list[dict],
+    patient_id: str,
+    record_id: str,
+    document_date: str | None,
+) -> list[dict]:
+    """Convert extraction medication dicts to medications table rows.
+
+    drug_name / dosage / frequency come from the LLM JSON.
+    Entries tagged _from_ner=True are NER-only additions → low_confidence=True.
+    """
+    rows: list[dict] = []
+    for med in medications:
+        name = (med.get("drug_name") or med.get("name") or "").strip()
+        if not name or len(name) < 2:
+            continue
+        from_ner = bool(med.get("_from_ner", False))
+        rows.append({
+            "patient_id":       patient_id,
+            "record_id":        record_id,
+            "name":             name,
+            "dosage":           med.get("dosage") or None,
+            "frequency":        med.get("frequency") or None,
+            "duration":         med.get("duration") or None,
+            "document_date":    document_date,
+            "is_active":        True,
+            # NER-only entries are unconfirmed by the LLM structured pass
+            "low_confidence":   from_ner,
+            "confidence_score": round(float(med.get("_ner_score", 1.0)), 3) if from_ner else 1.0,
+        })
+    return rows
+
+
+def _build_lab_value_rows(
+    lab_values: list[dict],
+    patient_id: str,
+    record_id: str,
+    document_date: str | None,
+) -> list[dict]:
+    """Convert extraction lab value dicts to lab_values table rows."""
+    rows: list[dict] = []
+    seen: set[str] = set()    # deduplicate by test name (first occurrence wins)
+
+    for lab in lab_values:
+        test_name = (lab.get("test_name") or lab.get("name") or "").strip()
+        value     = str(lab.get("value") or "").strip()
+        if not test_name or not value:
+            continue
+        key = test_name.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+
+        rows.append({
+            "patient_id":      patient_id,
+            "record_id":       record_id,
+            "test_name":       test_name,
+            "value":           value,
+            "unit":            lab.get("unit") or None,
+            "reference_range": lab.get("reference_range") or None,
+            "is_abnormal":     bool(lab.get("is_abnormal", False)),
+            "document_date":   document_date,
+        })
+
+    return rows

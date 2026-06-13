@@ -15,7 +15,10 @@ class Settings(BaseSettings):
 
     # LLM keys — server-side only
     groq_api_key: str
-    gemini_api_key: str = ""           # Optional fallback
+    gemini_api_key: str = ""           # Used for vision OCR + LLM fallback
+    # Single Gemini model used for both vision OCR and text generation fallback.
+    # Must support multimodal input (vision).  Default: gemini-3.5-flash.
+    gemini_model: str = "gemini-3.5-flash"
 
     # TTS — optional (Phase 5)
     # MedInsight uses Sarvam AI Bulbul:v3 (11 Indian languages).
@@ -35,6 +38,7 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
+        extra="ignore",   # silently ignore unknown env vars (e.g. old GEMINI_VISION_MODEL)
     )
 
 

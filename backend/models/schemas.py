@@ -39,10 +39,13 @@ class SeverityLevel(str, Enum):
 
 
 class ProcessingStatus(str, Enum):
-    pending    = "pending"
-    processing = "processing"
-    done       = "done"
-    failed     = "failed"
+    pending      = "pending"
+    processing   = "processing"
+    done         = "done"
+    failed       = "failed"
+    # needs_review: extraction completed but returned no medications AND no lab values.
+    # Shown to the patient as "needs review" so they know the data may be incomplete.
+    needs_review = "needs_review"
 
 
 # ─── Parsed record content ────────────────────────────────────────────────────
