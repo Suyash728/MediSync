@@ -216,7 +216,7 @@ async def upload_document(
     if not error_msg:
         logger.info("[%s] Summary start", record_id[:8])
         try:
-            summary = await llm.summarise_record_async(raw_text, extracted, lab_value_rows)
+            summary = await llm.summarise_record_async(raw_text, extracted, lab_value_rows, record_type)
             logger.info("[%s] Summary done", record_id[:8])
         except Exception as exc:
             # Non-fatal: record is still saved; patient can re-process later.

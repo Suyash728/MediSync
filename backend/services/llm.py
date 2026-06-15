@@ -283,73 +283,149 @@ def _try_gemini_extraction_sync(prompt: str) -> Optional[str]:
 #
 # Summary is generated AFTER the reference range fallback so it can cite
 # resolved ranges and flag abnormal values even when the document didn't
-# include a reference column.  The prompt is split into two halves so the
-# resolved lab block can be injected between them via concatenation.
+# include a reference column.
+#
+# Prompt structure differs by record_type — see _INSTRUCTIONS dict below.
+# The resolved-lab block is only injected for lab_report and discharge_summary.
 
 _SUMMARY_SYSTEM = (
     "You are a clinical documentation assistant producing concise, factual medical summaries."
 )
 
-_SUMMARY_PREAMBLE = """Write a concise clinical summary of this medical document.
+# ── Per-type summary instructions ────────────────────────────────────────────
+#
+# Each entry is the "what to write" instructions block for that document type.
+# _build_summary_prompt selects the right one and appends the data sections.
+# Using a dict (not if/elif in the prompt) keeps each instruction self-contained
+# and easy to update independently.
 
-Requirements:
-- State the document type and date if present.
-- List confirmed diagnoses by name (if any). If none, state "No diagnoses identified."
-- List all medications with dosage and frequency (if any). If none, state "No medications identified."
-- For lab values use ONLY the resolved lab data provided below — not the raw document text.
-  - ABNORMAL values lead: list every abnormal value explicitly with test name, measured value
-    with units, reference range, and whether it is HIGH or LOW.
-  - When the reference range comes from standard guidelines (not the document), write
-    "based on standard reference range" after citing it.
-  - If a value has no reference range at all, do not speculate about its normality.
-  - If no abnormal values found, state "No abnormal lab values identified."
-  - Close the lab section with exactly ONE sentence listing parameters confirmed within range
-    (is_abnormal=false in the data below). Use this format:
-      • Some abnormal, some normal → "All other measured parameters — [names] — are within the reference range."
-      • All values normal (none abnormal) → "All measured parameters are within the reference range — [names]."
-      • All values abnormal (none normal) → omit this sentence entirely.
-    List test names only — no values, no units, no ranges in the normal-confirmation sentence.
-- Note any follow-up instructions or clinical recommendations mentioned in the document.
-- Do not speculate or add information not present in the resolved data or source text.
-- Maximum 250 words. Clinical tone throughout.
+_INSTRUCTIONS: dict[str, str] = {
+    "prescription": (
+        "Write a concise clinical summary of this prescription document.\n\n"
+        "Requirements:\n"
+        "- State the document date, prescribing doctor, and facility if present.\n"
+        "- List all medications prescribed with dosage, frequency, and duration.\n"
+        "  If none identified, state \"No medications identified.\"\n"
+        "- State the diagnosis or clinical indication if mentioned.\n"
+        "- Note any special instructions (e.g. take with food, avoid alcohol,\n"
+        "  complete the full course, monitor blood pressure).\n"
+        "- Note any follow-up date or appointment if mentioned.\n"
+        "- Do NOT include lab values, reference ranges, or laboratory parameter commentary.\n"
+        "- Close with exactly this sentence:\n"
+        "  \"Drug interactions across the full medication history are checked automatically.\"\n"
+        "- Maximum 200 words. Clinical tone.\n"
+    ),
+    "lab_report": (
+        "Write a concise clinical summary of this lab report.\n\n"
+        "Requirements:\n"
+        "- State the document date and facility if present.\n"
+        "- For lab values use ONLY the resolved lab data provided below — not the raw text.\n"
+        "  - ABNORMAL values lead: list every abnormal value explicitly with test name,\n"
+        "    measured value with units, reference range, and whether it is HIGH or LOW.\n"
+        "  - When the reference range comes from standard guidelines (not the document),\n"
+        "    write \"based on standard reference range\" after citing it.\n"
+        "  - If a value has no reference range, do not speculate about its normality.\n"
+        "  - If no abnormal values found, state \"No abnormal lab values identified.\"\n"
+        "  - Close the lab section with exactly ONE sentence listing parameters within range\n"
+        "    (is_abnormal=false in the resolved data). Format:\n"
+        "      Some abnormal, some normal → "
+        "\"All other measured parameters — [names] — are within the reference range.\"\n"
+        "      All values normal → "
+        "\"All measured parameters are within the reference range — [names].\"\n"
+        "      All values abnormal → omit this sentence entirely.\n"
+        "    List test names only — no values, units, or ranges in the closing line.\n"
+        "- Note any follow-up instructions mentioned in the document.\n"
+        "- Do not speculate beyond the resolved data and source text.\n"
+        "- Maximum 250 words. Clinical tone.\n"
+    ),
+    "discharge_summary": (
+        "Write a concise clinical summary of this hospital discharge summary.\n\n"
+        "Requirements:\n"
+        "- State the date of discharge and treating facility if present.\n"
+        "- State the primary diagnosis. List secondary diagnoses if present.\n"
+        "- List procedures performed during the admission, if any.\n"
+        "- List medications prescribed at discharge with dosage and frequency.\n"
+        "  If none, state \"No medications listed at discharge.\"\n"
+        "- Summarise key clinical findings during the admission. Mention lab values\n"
+        "  only if clinically significant (abnormal or central to the diagnosis).\n"
+        "- State the patient's condition at discharge (e.g. stable, improved, guarded).\n"
+        "- Note follow-up instructions, appointment dates, and activity restrictions.\n"
+        "- Do not speculate beyond what is stated in the source document.\n"
+        "- Maximum 250 words. Clinical tone.\n"
+    ),
+    "imaging": (
+        "Write a concise clinical summary of this radiology / imaging report.\n\n"
+        "Requirements:\n"
+        "- State the study type (X-Ray, USG, MRI, CT scan, etc.) and body part examined.\n"
+        "- State the document date and the referring/reporting doctor or facility if present.\n"
+        "- Quote key measurements or findings exactly as stated by the radiologist.\n"
+        "- State the radiologist's impression or conclusion explicitly.\n"
+        "- Flag any abnormal or significant findings prominently.\n"
+        "- Do NOT mention lab values, blood test results, medications, or diagnoses\n"
+        "  from other documents.\n"
+        "- Do not speculate beyond what is stated in the imaging report.\n"
+        "- Maximum 200 words. Clinical tone.\n"
+    ),
+    "vaccination": (
+        "Write a concise clinical summary of this vaccination record.\n\n"
+        "Requirements:\n"
+        "- State the vaccine name and dose number (e.g. Dose 1 of 2) if mentioned.\n"
+        "- State the date of administration.\n"
+        "- State the next due date or booster schedule if mentioned.\n"
+        "- State the administering facility or healthcare provider if present.\n"
+        "- Mention the lot or batch number if present.\n"
+        "- Do NOT use lab value language, medication dosage language, or reference ranges.\n"
+        "- Maximum 150 words. Clinical tone.\n"
+    ),
+    "other": (
+        "Write a concise clinical summary of this medical document.\n\n"
+        "Requirements:\n"
+        "- Identify and state the type of document based on its content.\n"
+        "- Summarise the key clinical information present\n"
+        "  (diagnoses, medications, findings, recommendations).\n"
+        "- Do not assume a specific structure — follow what is actually in the document.\n"
+        "- Do not speculate beyond what is present in the source text.\n"
+        "- Maximum 200 words. Clinical tone.\n"
+    ),
+}
 
-Resolved lab values (reference ranges supplemented from WHO/ICMR standards where absent in document):
-"""
+# Only these types receive the resolved-lab block in their summary prompt.
+# For all other types the lab section is omitted — prescriptions, imaging reports,
+# and vaccination records should never contain lab commentary.
+_LAB_BLOCK_TYPES = frozenset({"lab_report", "discharge_summary"})
 
-_SUMMARY_MID = """
-
-Extracted structured data (medications, diagnoses — lab values superseded by resolved data above):
-"""
-
-_MAX_SUMMARY_TOKENS = 500   # ~250 words with headroom for normal-confirmation closing line
+_MAX_SUMMARY_TOKENS = 500
 
 
 async def summarise_record_async(
     raw_text: str,
     entities: dict,
     resolved_lab_values: list[dict] | None = None,
+    record_type: str = "other",
 ) -> str:
     """Generate a factual clinical summary.  Async (non-blocking I/O path).
 
     Must be called AFTER the reference range fallback so that resolved_lab_values
     contains complete reference ranges and is_abnormal flags.
 
-    Tries Groq first; falls back to Gemini; falls back to deterministic template
+    Tries Groq first; falls back to Gemini; falls back to a deterministic template
     if both APIs fail (e.g. during offline demo or API outage).
 
     Args:
         raw_text:             Raw OCR text (truncated to 3000 chars in the prompt).
         entities:             The structured extraction dict from extract_structured_async().
         resolved_lab_values:  The fully resolved lab_value DB rows after reference fallback.
-                              When provided, this supersedes entities["lab_values"] for
-                              all abnormal-value callouts in the summary.
+                              Included in the prompt only for lab_report and discharge_summary
+                              types; omitted for prescriptions, imaging, vaccinations, etc.
+        record_type:          The document type (matches RecordType enum values).
+                              Selects the type-specific prompt from _INSTRUCTIONS.
     """
-    prompt = _build_summary_prompt(raw_text, entities, resolved_lab_values)
+    prompt = _build_summary_prompt(raw_text, entities, resolved_lab_values, record_type)
     result = await _try_groq_summary_async(prompt)
     if result is None:
         result = _try_gemini_summary_sync(prompt)
     if result is None:
-        result = _fallback_summary(entities, resolved_lab_values)
+        result = _fallback_summary(entities, resolved_lab_values, record_type)
     return result
 
 
@@ -357,18 +433,41 @@ def _build_summary_prompt(
     raw_text: str,
     entities: dict,
     resolved_lab_values: list[dict] | None = None,
+    record_type: str = "other",
 ) -> str:
-    lab_block = _format_resolved_labs(resolved_lab_values or [])
-    # Exclude raw lab_values from the entities block — the resolved list supersedes it
+    instructions = _INSTRUCTIONS.get(record_type, _INSTRUCTIONS["other"])
+
+    # Inject the resolved-lab block only for document types where lab values are
+    # the primary content (lab_report) or useful context (discharge_summary).
+    # For prescriptions, imaging, vaccinations, and other types the lab block is
+    # omitted entirely — including it causes the LLM to add spurious lab commentary.
+    if record_type in _LAB_BLOCK_TYPES:
+        if record_type == "lab_report":
+            lab_header = (
+                "\nResolved lab values (reference ranges supplemented from "
+                "WHO/ICMR standards where absent in document):\n"
+            )
+        else:  # discharge_summary
+            lab_header = (
+                "\nLab values from admission "
+                "(context only — secondary to the discharge narrative):\n"
+            )
+        lab_section = lab_header + _format_resolved_labs(resolved_lab_values or [])
+    else:
+        lab_section = ""
+
+    # Always strip raw lab_values from the entities block: the resolved list supersedes
+    # them for lab/discharge types, and they're irrelevant for all other types.
     entities_for_summary = {k: v for k, v in entities.items() if k != "lab_values"}
     entities_str = json.dumps(entities_for_summary, indent=2, default=str)
     truncated    = raw_text[:3000] if len(raw_text) > 3000 else raw_text
+
     return (
-        _SUMMARY_PREAMBLE
-        + lab_block
-        + _SUMMARY_MID
+        instructions
+        + lab_section
+        + "\n\nExtracted structured data:\n"
         + entities_str
-        + "\n\nRaw text (first 3000 chars):\n"
+        + "\n\nRaw document text (first 3000 chars):\n"
         + truncated
     )
 
@@ -483,52 +582,104 @@ def _try_gemini_summary_sync(prompt: str) -> Optional[str]:
         return None
 
 
-def _fallback_summary(entities: dict, resolved_lab_values: list[dict] | None = None) -> str:
-    """Deterministic template used when both LLM APIs are unavailable."""
+def _fallback_summary(
+    entities: dict,
+    resolved_lab_values: list[dict] | None = None,
+    record_type: str = "other",
+) -> str:
+    """Deterministic template used when both LLM APIs are unavailable.
+
+    Branches by record_type so the fallback text matches the document —
+    prescriptions don't mention labs, imaging doesn't mention medications, etc.
+    """
     logger.warning("Both LLM APIs failed — using template fallback summary.")
     parts: list[str] = []
 
-    diag = entities.get("diagnoses", [])
-    if diag:
-        parts.append(f"Diagnoses: {', '.join(str(d) for d in diag[:5])}.")
-    else:
-        parts.append("No diagnoses identified.")
-
-    meds = entities.get("medications", [])
-    if meds:
-        names = ", ".join(
-            m.get("drug_name") or m.get("name") or str(m) for m in meds[:5]
-        )
-        parts.append(f"Medications: {names}.")
-    else:
-        parts.append("No medications identified.")
-
-    # Prefer resolved lab values (post-fallback) over raw extraction for abnormal callouts
-    labs     = resolved_lab_values if resolved_lab_values is not None else entities.get("lab_values", [])
-    abnormal = [lv for lv in labs if lv.get("is_abnormal") is True]
-    normal   = [lv for lv in labs if lv.get("is_abnormal") is False]
-
-    if abnormal:
-        flagged = ", ".join(
-            f"{lv.get('test_name', '?')} {lv.get('value', '?')}"
-            for lv in abnormal[:3]
-        )
-        parts.append(f"Abnormal values: {flagged}.")
-    else:
-        parts.append("No abnormal lab values identified.")
-
-    # Normal-confirmation closing line — mirrors the LLM prompt rules
-    if normal and abnormal:
-        normal_names = ", ".join(lv.get("test_name", "?") for lv in normal)
+    if record_type == "prescription":
+        meds = entities.get("medications", [])
+        if meds:
+            names = ", ".join(
+                m.get("drug_name") or m.get("name") or str(m) for m in meds[:5]
+            )
+            parts.append(f"Medications prescribed: {names}.")
+        else:
+            parts.append("No medications identified.")
+        diag = entities.get("diagnoses", [])
+        if diag:
+            parts.append(f"Indication: {', '.join(str(d) for d in diag[:3])}.")
         parts.append(
-            f"All other measured parameters — {normal_names} — are within the reference range."
+            "Drug interactions across the full medication history are checked automatically."
         )
-    elif normal and not abnormal:
-        normal_names = ", ".join(lv.get("test_name", "?") for lv in normal)
+
+    elif record_type == "lab_report":
+        # Full lab-report behaviour: abnormal callouts + normal-confirmation closing line.
+        labs     = resolved_lab_values if resolved_lab_values is not None else entities.get("lab_values", [])
+        abnormal = [lv for lv in labs if lv.get("is_abnormal") is True]
+        normal   = [lv for lv in labs if lv.get("is_abnormal") is False]
+
+        if abnormal:
+            flagged = ", ".join(
+                f"{lv.get('test_name', '?')} {lv.get('value', '?')}"
+                for lv in abnormal[:3]
+            )
+            parts.append(f"Abnormal values: {flagged}.")
+        else:
+            parts.append("No abnormal lab values identified.")
+
+        # Normal-confirmation closing line — mirrors the LLM prompt rule exactly
+        if normal and abnormal:
+            normal_names = ", ".join(lv.get("test_name", "?") for lv in normal)
+            parts.append(
+                f"All other measured parameters — {normal_names} — are within the reference range."
+            )
+        elif normal and not abnormal:
+            normal_names = ", ".join(lv.get("test_name", "?") for lv in normal)
+            parts.append(
+                f"All measured parameters are within the reference range — {normal_names}."
+            )
+        # All abnormal → omit the closing line
+
+    elif record_type == "discharge_summary":
+        diag = entities.get("diagnoses", [])
+        if diag:
+            parts.append(f"Diagnoses: {', '.join(str(d) for d in diag[:5])}.")
+        else:
+            parts.append("No diagnoses identified.")
+        meds = entities.get("medications", [])
+        if meds:
+            names = ", ".join(
+                m.get("drug_name") or m.get("name") or str(m) for m in meds[:5]
+            )
+            parts.append(f"Medications at discharge: {names}.")
+
+    elif record_type == "imaging":
         parts.append(
-            f"All measured parameters are within the reference range — {normal_names}."
+            "Imaging study — findings could not be automatically summarised."
         )
-    # All abnormal → omit the closing line
+        parts.append(
+            "Please review the original report for the radiologist's findings and impression."
+        )
+
+    elif record_type == "vaccination":
+        meds = entities.get("medications", [])
+        if meds:
+            vax_name = meds[0].get("drug_name") or meds[0].get("name") or "Vaccine"
+            parts.append(f"Vaccination record: {vax_name}.")
+        else:
+            parts.append("Vaccination record.")
+
+    else:  # "other" and any unknown types
+        diag = entities.get("diagnoses", [])
+        if diag:
+            parts.append(f"Diagnoses: {', '.join(str(d) for d in diag[:5])}.")
+        meds = entities.get("medications", [])
+        if meds:
+            names = ", ".join(
+                m.get("drug_name") or m.get("name") or str(m) for m in meds[:5]
+            )
+            parts.append(f"Medications: {names}.")
+        if not parts:
+            parts.append("Document content could not be automatically summarised.")
 
     parts.append("Please share this document with your clinician for formal review.")
     return " ".join(parts)
