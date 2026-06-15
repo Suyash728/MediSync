@@ -84,28 +84,39 @@ _EXTRACTION_SYSTEM = (
 _EXTRACTION_SCHEMA = """{
   "record_type": "prescription | lab_report | discharge_summary | imaging | vaccination | other",
   "document_date": "YYYY-MM-DD or null",
-  "source_facility": "facility or hospital name or null",
+  "source_facility": "string or null",
   "medications": [
-    {"drug_name": "exact name", "dosage": "e.g. 500 mg or null", "frequency": "e.g. twice daily or null"}
+    {"drug_name": "string", "dosage": "string or null", "frequency": "string or null"}
   ],
   "lab_values": [
     {
-      "test_name": "exact test name",
-      "value": "numeric or text value",
-      "unit": "unit of measurement or null",
-      "reference_range": "e.g. 70-100 or null",
-      "is_abnormal": true or false
+      "test_name": "string",
+      "value": "string",
+      "unit": "string or null",
+      "reference_range": "string or null",
+      "is_abnormal": true
     }
   ],
-  "diagnoses": ["diagnosis 1", "diagnosis 2"],
-  "summary": "2-3 sentence factual clinical summary"
+  "diagnoses": ["string"],
+  "summary": "string"
 }"""
 
 _EXTRACTION_RULES = """
 Strict rules:
 - Extract ONLY information explicitly present in the text. Never infer or hallucinate.
-- is_abnormal: set true only when the document explicitly marks the value H, L, HIGH, LOW,
-  ABNORMAL, CRITICAL, or states it falls outside the reference range. Default false.
+- reference_range: MANDATORY when the document provides a "Reference Range",
+  "Reference Interval", or "Normal Range" column or field for that test. Copy
+  it EXACTLY as printed — do not reformat, round, or abbreviate. Set to null
+  only when the document genuinely provides no range for that specific test.
+- is_abnormal: determine by comparing the numeric value against the reference_range.
+  Parse range formats correctly:
+    "13.0 - 17.0"  → abnormal if value < 13.0 or > 17.0
+    "> 4.5"        → abnormal if value <= 4.5
+    "< 100"        → abnormal if value >= 100
+    "150,000 - 400,000" → ignore commas, treat as 150000 - 400000
+  Also set true when the document explicitly flags the value H, L, HIGH, LOW,
+  ABNORMAL, or CRITICAL — even if you cannot parse the range.
+  Set is_abnormal=null (NOT false) when no reference_range exists for that test.
 - document_date: the date printed on the document, not today. Format YYYY-MM-DD.
 - Include ALL medications — prescription drugs, OTC drugs, vitamins, and supplements.
 - Null for missing string fields. Empty array [] for missing list fields.
@@ -137,7 +148,16 @@ async def extract_structured_async(raw_text: str) -> dict:
     Returns a dict with keys: record_type, document_date, source_facility,
     medications, lab_values, diagnoses, summary.
     """
-    prompt = _EXTRACTION_RULES + raw_text[:4000]   # 4 k chars fits comfortably in context
+    # Schema MUST come before the rules so the model knows the exact field names
+    # expected.  Without it, Groq guesses names like "reference_interval" instead of
+    # "reference_range" and those keys are silently dropped by the persistence code.
+    prompt = (
+        "Return a JSON object matching this schema exactly:\n"
+        + _EXTRACTION_SCHEMA
+        + "\n\n"
+        + _EXTRACTION_RULES
+        + raw_text[:4000]
+    )
 
     raw = await _try_groq_extraction_async(prompt)
     if raw is None:
@@ -148,7 +168,13 @@ async def extract_structured_async(raw_text: str) -> dict:
         logger.warning("All extraction LLM calls failed — returning empty structure.")
         return dict(_EMPTY_EXTRACTION)
 
-    return _parse_extraction_response(raw)
+    result = _parse_extraction_response(raw)
+    logger.debug(
+        "[extraction] Parsed lab_values (%d rows): %s",
+        len(result.get("lab_values", [])),
+        result.get("lab_values", []),
+    )
+    return result
 
 
 def _parse_extraction_response(raw: str) -> dict:
@@ -209,8 +235,10 @@ async def _try_groq_extraction_async(prompt: str) -> Optional[str]:
             max_tokens=2000,
             response_format={"type": "json_object"},   # Groq JSON mode — no markdown wrappers
         )
+        raw_content = resp.choices[0].message.content
+        logger.debug("[extraction] Groq raw JSON output:\n%s", raw_content)
         logger.info("Structured extraction via Groq: success.")
-        return resp.choices[0].message.content
+        return raw_content
     except Exception as exc:
         logger.error("Groq extraction error: %s", exc)
         return None

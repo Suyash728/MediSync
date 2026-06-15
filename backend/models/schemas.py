@@ -73,7 +73,7 @@ class LabResult(BaseModel):
     value:           str
     unit:            str | None = None
     reference_range: str | None = None
-    is_abnormal:     bool = False
+    is_abnormal:     bool | None = None   # None = unknown (no reference range to compare against)
     date:            str | None = None
 
 

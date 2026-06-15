@@ -43,7 +43,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, Form, status
 
 from models.schemas import ProcessingStatus, RecordType
-from services import ocr, ner, llm
+from services import ocr, ner, llm, reference_lookup
 from utils.auth import get_current_patient
 from utils.db import get_supabase
 from utils.storage import upload_file, ALLOWED_TYPES
@@ -208,6 +208,7 @@ async def upload_document(
         lab_value_rows = _build_lab_value_rows(
             extracted.get("lab_values", []), patient_id, record_id, document_date or None,
         )
+        _apply_reference_fallback(lab_value_rows)
 
     # ── 9. Persist extracted rows ─────────────────────────────────────────────
 
@@ -215,6 +216,10 @@ async def upload_document(
         supabase.table("medications").insert(medications_rows).execute()
         logger.info("[%s] Inserted %d medication rows.", record_id[:8], len(medications_rows))
 
+    logger.debug(
+        "[%s] Lab value rows before insert (%d): %s",
+        record_id[:8], len(lab_value_rows), lab_value_rows,
+    )
     if lab_value_rows:
         supabase.table("lab_values").insert(lab_value_rows).execute()
         logger.info("[%s] Inserted %d lab_value rows.", record_id[:8], len(lab_value_rows))
@@ -315,7 +320,7 @@ def _merge_ner_secondary(extracted: dict, ner_entities: dict) -> None:
                 "value":           ner_lab.get("value", ""),
                 "unit":            ner_lab.get("unit") or None,
                 "reference_range": None,
-                "is_abnormal":     False,   # can't confirm without reference range
+                "is_abnormal":     None,    # no reference range from NER — unknown, not confirmed normal
                 "_from_ner":       True,
             })
             existing_tests.add(name.lower())
@@ -376,15 +381,59 @@ def _build_lab_value_rows(
             continue
         seen.add(key)
 
+        # Tolerate key aliases the LLM may use for reference_range
+        ref_range = (
+            lab.get("reference_range")
+            or lab.get("reference_interval")
+            or lab.get("ref_range")
+            or lab.get("normal_range")
+            or None
+        )
+        # is_abnormal can be None (no range to compare against), not just True/False.
+        # Preserve None rather than coercing it to False — the DB column is now nullable.
+        raw_abnormal = lab.get("is_abnormal")
         rows.append({
             "patient_id":      patient_id,
             "record_id":       record_id,
             "test_name":       test_name,
             "value":           value,
             "unit":            lab.get("unit") or None,
-            "reference_range": lab.get("reference_range") or None,
-            "is_abnormal":     bool(lab.get("is_abnormal", False)),
+            "reference_range": ref_range,
+            # Track where the reference range came from so the UI can badge it
+            "reference_source": "lab_provided" if ref_range else None,
+            "is_abnormal":     None if raw_abnormal is None else bool(raw_abnormal),
             "document_date":   document_date,
         })
 
     return rows
+
+
+def _apply_reference_fallback(rows: list[dict]) -> None:
+    """Fill missing reference_range from the standard lookup table (in-place).
+
+    For each row without a document-provided range, we query the curated
+    reference_ranges.json lookup.  If found, reference_source is set to
+    "standard" and is_abnormal is computed by numeric comparison.
+
+    Also computes is_abnormal for rows that already have a reference_range but
+    where the LLM left is_abnormal=None (e.g. the LLM could not parse the format).
+    """
+    for row in rows:
+        test_name = row.get("test_name", "")
+        value_str = row.get("value", "")
+
+        if not row.get("reference_range"):
+            # No range from the document — try standard lookup
+            result = reference_lookup.lookup(test_name)
+            if result:
+                range_str, source = result
+                row["reference_range"] = range_str
+                row["reference_source"] = source   # "standard"
+                logger.debug(
+                    "reference_fallback: '%s' → '%s' (standard)", test_name, range_str,
+                )
+
+        # Compute is_abnormal whenever we have a range but no verdict yet
+        if row.get("reference_range") and row.get("is_abnormal") is None:
+            computed = reference_lookup.compute_is_abnormal(value_str, row["reference_range"])
+            row["is_abnormal"] = computed
