@@ -270,16 +270,26 @@ async def _generate_explanation(
     severity: str,
     mechanism: str,
     description: str,
-) -> str:
-    """Generate a patient-facing plain-language explanation via Groq.
+) -> tuple[str, str]:
+    """Generate a patient-facing explanation and action recommendation via Groq.
 
     THE DDI MATCH IS ALREADY CONFIRMED from the deterministic CSV lookup.
-    The LLM's only job is to write a clear, calm, actionable explanation.
-    Falls back to the clinical description if Groq is unavailable.
+    The LLM only writes clear, calm, patient-facing content — not detection.
+
+    Returns:
+        (explanation, recommendation)
+        explanation    — what the interaction means / what could happen
+        recommendation — what the patient should specifically do
+
+    Falls back to (description, generic_advice) if Groq is unavailable.
     """
+    _FALLBACK_REC = (
+        "Speak to your doctor before stopping or changing either medication."
+    )
+
     client = _get_groq()
     if client is None:
-        return description
+        return description, _FALLBACK_REC
 
     prompt = (
         f"You are explaining a drug interaction to a patient in plain language.\n\n"
@@ -288,13 +298,11 @@ async def _generate_explanation(
         f"Severity: {severity}\n"
         f"Mechanism: {mechanism}\n"
         f"Clinical note: {description}\n\n"
-        f"Write exactly 2-3 sentences:\n"
-        f"1. What this interaction means — what could happen.\n"
-        f"2. What the patient should do (e.g. speak to their doctor before "
-        f"stopping or changing medication; do not stop without advice; "
-        f"watch for specific symptoms).\n\n"
-        f"Keep it factual, calm, and under 70 words. "
-        f"Do not diagnose, prescribe, or alarm unnecessarily."
+        f"Write exactly two labelled lines — no other text:\n"
+        f"EXPLANATION: (1-2 sentences) What this interaction means and what could happen.\n"
+        f"RECOMMENDATION: (1 sentence) What the patient should do.\n\n"
+        f"Rules: factual, calm, under 80 words total. Do not diagnose, prescribe, "
+        f"or alarm unnecessarily. Use exactly the labels EXPLANATION: and RECOMMENDATION:."
     )
 
     try:
@@ -305,18 +313,34 @@ async def _generate_explanation(
                     "role": "system",
                     "content": (
                         "You are a patient-education clinical writer. "
-                        "Be factual, calm, and concise."
+                        "Be factual, calm, and concise. "
+                        "Always output exactly the two labelled lines requested."
                     ),
                 },
                 {"role": "user", "content": prompt},
             ],
             temperature=0.3,
-            max_tokens=150,
+            max_tokens=180,
         )
-        return resp.choices[0].message.content.strip()
+        text = resp.choices[0].message.content.strip()
+
+        # Parse the two labelled lines the LLM was asked to output.
+        explanation = ""
+        recommendation = ""
+        for line in text.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("EXPLANATION:"):
+                explanation = stripped[len("EXPLANATION:"):].strip()
+            elif stripped.startswith("RECOMMENDATION:"):
+                recommendation = stripped[len("RECOMMENDATION:"):].strip()
+
+        return (
+            explanation or description,
+            recommendation or _FALLBACK_REC,
+        )
     except Exception as exc:
         logger.warning("conflict: explanation generation failed: %s", exc)
-        return description
+        return description, _FALLBACK_REC
 
 
 # ── Main entry point ───────────────────────────────────────────────────────────
@@ -400,19 +424,20 @@ async def run_conflict_check(patient_id: str) -> list[dict]:
                 ddi.severity.upper(), display_a, display_b,
             )
 
-            explanation = await _generate_explanation(
+            explanation, recommendation = await _generate_explanation(
                 display_a, display_b,
                 ddi.severity, ddi.mechanism, ddi.description,
             )
 
             conflicts_to_insert.append({
-                "patient_id":    patient_id,
-                "drug_a":        display_a,
-                "drug_b":        display_b,
-                "severity":      ddi.severity,
-                "mechanism":     ddi.mechanism or None,
-                "description":   ddi.description or None,
-                "explanation":   explanation,
+                "patient_id":     patient_id,
+                "drug_a":         display_a,
+                "drug_b":         display_b,
+                "severity":       ddi.severity,
+                "mechanism":      ddi.mechanism or None,
+                "description":    ddi.description or None,
+                "explanation":    explanation,
+                "recommendation": recommendation,
                 "is_acknowledged": False,
             })
 

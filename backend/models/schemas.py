@@ -145,7 +145,8 @@ class DrugConflict(BaseModel):
     severity:         ConflictSeverity
     mechanism:        str | None = None   # Pharmacological mechanism from the dataset
     description:      str | None = None   # Clinical description from the dataset
-    explanation:      str | None = None   # LLM-generated plain-language patient explanation
+    explanation:      str | None = None   # LLM: what this interaction means / what could happen
+    recommendation:   str | None = None   # LLM: what the patient should do
     is_acknowledged:  bool = False
     detected_at:      datetime
 

@@ -504,3 +504,50 @@ git add backend/services/conflict.py \
         backend/routers/upload.py
 
 git commit -m "Phase 3 patch: fix salt-suffix normalization and simplify conflict-check gate"
+
+# Phase 3 patch — Schema/insert reconciliation summary
+Root cause: The committed 005_drug_conflicts.sql never had a recommendation column, but the live Supabase DB likely does (from a draft migration that diverged). The _generate_explanation function was also putting both "what happens" and "what to do" into a single explanation blob — never populating a separate recommendation key.
+
+Final column set — what each stores:
+
+Column	Source	NOT NULL?
+description	CSV description field	No
+mechanism	CSV mechanism field	No
+explanation	LLM — what this interaction means / what could happen	No
+recommendation	LLM — what the patient should do (new, separate LLM line)	No
+What changed (6 files):
+
+supabase/migrations/006_drug_conflicts_add_recommendation.sql — ADD COLUMN IF NOT EXISTS recommendation text + DROP NOT NULL (idempotent, handles both fresh and broken-NOT NULL-live-DB states)
+backend/services/conflict.py — _generate_explanation now returns tuple[str, str]; prompts LLM with EXPLANATION: / RECOMMENDATION: labels; parses output; fallback is (description, generic_advice)
+backend/models/schemas.py — DrugConflict.recommendation: str | None = None
+frontend/lib/types.ts — DrugConflict.recommendation: string | null
+frontend/app/(patient)/dashboard/page.tsx — local DrugConflict interface gets recommendation: string | null
+frontend/app/(patient)/alerts/page.tsx — ConflictCard renders explanation and recommendation as separate paragraphs; "Action: " prefix on the recommendation line
+SQL to run in Supabase
+Paste this in the SQL Editor of your Supabase project:
+
+
+ALTER TABLE public.drug_conflicts
+    ADD COLUMN IF NOT EXISTS recommendation text;
+
+ALTER TABLE public.drug_conflicts
+    ALTER COLUMN recommendation DROP NOT NULL;
+Manual steps
+
+# Restart the backend (no pip changes needed)
+cd backend && uvicorn main:app --reload
+
+# Restart the frontend
+cd frontend && npm run dev
+After running the migration, upload a prescription to trigger a new conflict check. The drug_conflicts row will now have explanation and recommendation as separate columns. On /alerts the card will show the explanation paragraph first, then "Action: ..." on a second line.
+
+What to commit
+
+git add supabase/migrations/006_drug_conflicts_add_recommendation.sql \
+        backend/services/conflict.py \
+        backend/models/schemas.py \
+        frontend/lib/types.ts \
+        frontend/app/(patient)/dashboard/page.tsx \
+        frontend/app/(patient)/alerts/page.tsx
+
+git commit -m "Phase 3 patch: split explanation/recommendation columns in drug_conflicts"
