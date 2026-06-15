@@ -337,3 +337,170 @@ git add backend/data/reference_ranges.json \
         supabase/migrations/004_reference_source.sql \
         frontend/app/(patient)/record/[id]/page.tsx
 git commit -m "Phase 2 patch: built-in reference range fallback with WHO/ICMR standard ranges"
+
+# Phase 2 patch (summary pipeline fix) — Summary
+Root cause: The clinical summary was generated at step 7 (inside the extraction try-block), before step 8 ran _build_lab_value_rows and _apply_reference_fallback. So the summary LLM received the raw extraction dict with empty reference_range fields, producing "no abnormal values — ranges not provided" even though the fallback later resolved ranges and flagged abnormal results in the database.
+
+What changed (2 files, backend only):
+
+backend/routers/upload.py — Removed summary generation from inside the try-block. Added step 7.5 between step 8 (reference fallback) and step 9 (DB insert): summarise_record_async(raw_text, extracted, lab_value_rows) — now passes the fully resolved rows. Summary failure is caught separately (non-fatal); the record is still saved without a summary rather than marked failed.
+
+backend/services/llm.py — Four changes:
+
+_SUMMARY_INSTRUCTIONS replaced by _SUMMARY_PREAMBLE + _SUMMARY_MID (split so the resolved lab block can be injected between them via concatenation).
+New _format_resolved_labs(lab_rows) builds a bullet-point block like • Hemoglobin: 9.8 g/dL, ref 13.0 - 17.0 (standard reference range) — ABNORMAL LOW for each lab value.
+New _compute_direction(value_str, range_str) returns "HIGH" / "LOW" / "" by re-parsing the same range formats as reference_lookup.compute_is_abnormal.
+summarise_record_async and _build_summary_prompt updated to accept resolved_lab_values: list[dict] | None; raw lab_values is stripped from the entities block passed to the LLM (the resolved list supersedes it). _fallback_summary also updated to prefer resolved labs.
+Manual steps
+No SQL migrations, no package changes, no env vars. Restart the backend:
+
+
+npm run dev
+Test — CBC report with no reference range column:
+
+Upload a CBC report where the document has no Reference Range column
+Summary should now say: "Hemoglobin 9.8 g/dL is LOW (based on standard reference range 13.0–17.0 g/dL)" rather than "no abnormal values"
+The lab values table in /record/[id] should show the amber row + Std badge + Abnormal status (this was fixed in the previous patch; now the summary catches up)
+What to commit
+
+git add backend/services/llm.py \
+        backend/routers/upload.py
+git commit -m "Phase 2 patch: generate summary after reference fallback so abnormal callouts use resolved ranges"
+
+# Phase 2 patch (normal-values confirmation) — Summary
+What the problem was: The summary only listed abnormal findings and was silent about all other lab values, giving an incomplete picture. A patient seeing "Hemoglobin is LOW" with no further mention of the remaining 7 CBC tests has no way to know those results were fine.
+
+What changed (1 file, backend only):
+
+backend/services/llm.py — three edits:
+
+_SUMMARY_PREAMBLE — added a fifth bullet to the lab-values instruction block. The LLM is told to close the lab section with exactly one sentence listing the tests that were within range (is_abnormal=false), using one of three formats: mixed (some abnormal, some normal), all-normal, or all-abnormal (omit entirely). Test names only — no values or units in the normal-confirmation line.
+
+_fallback_summary — mirrors the same logic deterministically. Computes normal = [lv for lv in labs if lv.get("is_abnormal") is False] and appends the appropriate closing sentence (or nothing, when all are abnormal).
+
+_MAX_SUMMARY_TOKENS — raised from 400 → 500 to give the extra closing sentence room to breathe on reports with many normal tests.
+
+Expected output for a CBC with Hb=LOW, rest normal:
+
+Hemoglobin 9.8 g/dL is LOW (based on standard reference range 13.0–17.0 g/dL for adult male).
+All other measured parameters — WBC, Platelet Count, MCV, MCH, MCHC, RBC — are within the reference range.
+
+Manual steps
+No migrations, no package changes, no env vars. Restart backend:
+
+
+cd backend && uvicorn main:app --reload
+Test — upload a CBC where only Hb is abnormal:
+
+Summary should end with the normal-confirmation sentence listing the remaining test names.
+Test — upload a report where everything is normal:
+
+Summary should say "No abnormal lab values identified." then "All measured parameters are within the reference range — [names]."
+Test — upload a report where multiple values are abnormal and none are normal (e.g., a severely abnormal panel):
+
+Normal-confirmation sentence should be completely absent.
+What to commit
+
+git add backend/services/llm.py
+git commit -m "Phase 2 patch: add normal-values closing confirmation to clinical summary"
+
+# Phase 3 — Summary
+What was built (8 new files, 7 modified):
+
+New backend files
+backend/data/drug_interactions.csv — 100 curated DDI pairs across anticoagulants, antibiotics, psychiatric, cardiovascular, diabetes, immunosuppressant, and analgesic classes. All 14 required pairs included.
+backend/data/drug_name_aliases.json — 170+ brand-name mappings (Indian brands first: Crocin→Paracetamol, Ecosprin→Aspirin, Glycomet→Metformin, etc.) + international names.
+backend/services/conflict.py — Full detection engine. Loads CSV at import; normalises drug names via alias → fuzzy match → Groq confirmation (0.65–0.80 confidence range); O(1) DDI lookup; LLM-generates patient-facing explanations only after a CSV match is confirmed (the determinism/LLM boundary is commented clearly).
+supabase/migrations/005_drug_conflicts.sql — drug_conflicts table with minor/moderate/major severity, RLS (patients see only their own), and GRANT statements.
+Modified backend files
+backend/routers/conflicts.py — Replaced stub: GET /conflicts/, POST /conflicts/recheck, POST /conflicts/{id}/acknowledge.
+backend/routers/upload.py — Step 11b: runs conflict_svc.run_conflict_check(patient_id) after medications are persisted; non-fatal; returns new_conflicts in the response.
+backend/models/schemas.py — Added ConflictSeverity enum (minor/moderate/major); updated DrugConflict model to match the actual DB schema (mechanism, description, explanation).
+New/modified frontend files
+frontend/app/(patient)/alerts/page.tsx — Full implementation: active alerts (major→moderate→minor), Acknowledge button, collapsible Reviewed section, Re-run check button.
+frontend/lib/types.ts — Added ConflictSeverity type; updated DrugConflict interface.
+frontend/lib/api.ts — Added conflictsApi with list(), recheck(), acknowledge().
+frontend/components/UploadZone.tsx — Fires toast.warning("⚠️ Drug interaction detected: A + B") for every major conflict in the upload response.
+frontend/app/(patient)/dashboard/page.tsx — Fixed severity mapping for minor/moderate/major; dashboard conflict widget now shows explanation ?? description; new conflicts from upload prepend to the widget; "View all" link to /alerts.
+Manual steps
+1. Run the SQL migration (Supabase dashboard → SQL editor, or CLI):
+
+
+# Via CLI:
+supabase db push
+# Or paste supabase/migrations/005_drug_conflicts.sql into the SQL editor
+2. Restart the backend:
+
+
+cd backend && uvicorn main:app --reload
+3. Test:
+
+Upload two documents that contain interacting drugs (e.g., a Warfarin prescription + an Aspirin prescription for the same patient).
+After the second upload: a red toast should appear: ⚠️ Drug interaction detected: Aspirin + Warfarin.
+Dashboard widget should show the conflict with a major/destructive badge.
+Navigate to /alerts — the conflict appears under Active Alerts with mechanism, explanation, and Acknowledge button.
+Click Acknowledge → conflict moves to Reviewed section.
+Click Re-run check → "No new interactions detected."
+What to commit
+
+git add backend/data/drug_interactions.csv \
+        backend/data/drug_name_aliases.json \
+        backend/services/conflict.py \
+        backend/routers/conflicts.py \
+        backend/routers/upload.py \
+        backend/models/schemas.py \
+        supabase/migrations/005_drug_conflicts.sql \
+        frontend/app/\(patient\)/alerts/page.tsx \
+        frontend/lib/types.ts \
+        frontend/lib/api.ts \
+        frontend/components/UploadZone.tsx \
+        frontend/app/\(patient\)/dashboard/page.tsx
+
+git commit -m "Phase 3: drug-conflict detection engine, /alerts page, and dashboard widget"
+
+# Phase 3 patch — Summary
+Root causes confirmed:
+
+BUG 1 — The conflict check call was present in step 11b, but the gate condition final_status == ProcessingStatus.done.value was unnecessary and fragile. Replaced with not error_msg — simpler, directly expresses intent, and can't be broken by enum serialisation differences.
+
+BUG 2 — _strip_dose_route only removed dose numbers and route keywords. "Sodium" in "Warfarin Sodium" is a counter-ion salt suffix, not a route word — it was never stripped. The cleaned string "warfarin sodium" had difflib ratio ≈ 0.70 against "warfarin", below the 0.80 confident threshold, so it fell into the unreliable Groq-confirmation path.
+
+What changed (3 files):
+
+backend/services/conflict.py:
+
+Added _SALT_RE — strips 25 pharmaceutical salt/counter-ion suffixes: sodium, hydrochloride, hcl, bisulfate, carbonate, tartrate, maleate, citrate, gluconate, etc.
+Extended _ROUTE_RE — added plural forms (tablets?, capsules?), "caps", and scheduling abbreviations (od, bd, tds, qid).
+Renamed _strip_dose_route → _clean_drug_name with the new three-pass order: lowercase → salt strip → dose strip → route strip → collapse whitespace.
+Added step 0 in normalise_drug_name: direct exact set lookup against _DDI_DRUG_NAMES after cleaning. "Warfarin Sodium" → _clean_drug_name → "warfarin" → in _DDI_DRUG_NAMES → returns immediately, no fuzzy needed.
+backend/data/drug_name_aliases.json:
+
+Added "warfarin sodium" → Warfarin (belt-and-suspenders backup).
+Added "aspirin 81" → Aspirin (handles bare-number dose form without unit).
+backend/routers/upload.py:
+
+Changed if medications_rows and final_status == ProcessingStatus.done.value: to if medications_rows and not error_msg:.
+Manual steps
+Restart the backend (no migrations, no npm changes):
+
+
+cd backend && uvicorn main:app --reload
+Test the exact pair:
+
+Upload a Warfarin prescription for a patient (watch logs: "conflict check start" then "< 2 medications, skipping").
+Upload an Aspirin prescription for the same patient.
+Backend logs should show:
+
+conflict: 'Warfarin Sodium' → 'warfarin'
+conflict: 'Aspirin' → 'aspirin'
+conflict: NEW MAJOR — Aspirin + Warfarin
+conflict: inserted 1 new conflict row(s) for patient ...
+A red toast fires: ⚠️ Drug interaction detected: Aspirin + Warfarin.
+/alerts page shows the conflict under Active Alerts with a red Major badge.
+What to commit
+
+git add backend/services/conflict.py \
+        backend/data/drug_name_aliases.json \
+        backend/routers/upload.py
+
+git commit -m "Phase 3 patch: fix salt-suffix normalization and simplify conflict-check gate"

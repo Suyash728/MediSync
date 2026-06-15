@@ -44,6 +44,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, Form, status
 
 from models.schemas import ProcessingStatus, RecordType
 from services import ocr, ner, llm, reference_lookup
+from services import conflict as conflict_svc
 from utils.auth import get_current_patient
 from utils.db import get_supabase
 from utils.storage import upload_file, ALLOWED_TYPES
@@ -137,10 +138,11 @@ async def upload_document(
     # Everything inside the try block is wrapped so failures mark the record
     # as 'failed' instead of leaving it in 'processing' forever.
 
-    raw_text:    str  = ""
-    extracted:   dict = {}
-    summary:     str  = ""
-    error_msg:   str | None = None
+    raw_text:       str  = ""
+    extracted:      dict = {}
+    summary:        str  = ""
+    error_msg:      str | None = None
+    new_conflicts:  list[dict] = []
 
     suffix = Path(file.filename or "doc").suffix or ALLOWED_TYPES.get(content_type, ".bin")
 
@@ -180,12 +182,9 @@ async def upload_document(
         _merge_ner_secondary(extracted, ner_entities)
         logger.info("[%s] NER merge done", record_id[:8])
 
-        # ── 7. Clinical summary ───────────────────────────────────────────────
-        # Summary uses the now-merged extraction dict so it reflects both LLM
-        # and NER findings.
-        logger.info("[%s] Summary start", record_id[:8])
-        summary = await llm.summarise_record_async(raw_text, extracted)
-        logger.info("[%s] Summary done", record_id[:8])
+        # NOTE: summary is generated AFTER step 8 (reference fallback) so that
+        # abnormal-value callouts can include ranges resolved from the standard
+        # lookup table, not just ranges printed in the document.
 
     except Exception as exc:
         error_msg = str(exc)
@@ -209,6 +208,19 @@ async def upload_document(
             extracted.get("lab_values", []), patient_id, record_id, document_date or None,
         )
         _apply_reference_fallback(lab_value_rows)
+
+    # ── 7.5. Clinical summary — must run AFTER reference fallback ─────────────
+    # Passing lab_value_rows gives the LLM resolved reference ranges and
+    # is_abnormal flags, so it can call out abnormal values even when the
+    # document had no reference range column.
+    if not error_msg:
+        logger.info("[%s] Summary start", record_id[:8])
+        try:
+            summary = await llm.summarise_record_async(raw_text, extracted, lab_value_rows)
+            logger.info("[%s] Summary done", record_id[:8])
+        except Exception as exc:
+            # Non-fatal: record is still saved; patient can re-process later.
+            logger.error("[%s] Summary generation failed: %s", record_id[:8], exc)
 
     # ── 9. Persist extracted rows ─────────────────────────────────────────────
 
@@ -247,6 +259,23 @@ async def upload_document(
     }
     supabase.table("health_records").update(update_payload).eq("id", record_id).execute()
 
+    # ── 11b. Drug-conflict detection ─────────────────────────────────────────
+    # Run only when new medications were added and the pipeline succeeded.
+    # Checked AFTER the medications INSERT is committed (step 9) so that
+    # run_conflict_check sees the new rows when it queries the DB.
+    # Non-fatal: a conflict-check failure never marks the record as failed.
+    if medications_rows and not error_msg:
+        logger.info("[%s] Conflict check start", record_id[:8])
+        try:
+            new_conflicts = await conflict_svc.run_conflict_check(patient_id)
+            if new_conflicts:
+                logger.info(
+                    "[%s] Conflict check: %d new interaction(s) detected.",
+                    record_id[:8], len(new_conflicts),
+                )
+        except Exception as exc:
+            logger.error("[%s] Conflict check failed: %s", record_id[:8], exc)
+
     # ── 12. Write access_log ──────────────────────────────────────────────────
 
     supabase.table("access_log").insert({
@@ -273,9 +302,10 @@ async def upload_document(
             "processing_status": final_status,
             "processing_error":  error_msg,
         },
-        "medications": medications_rows,
-        "lab_values":  lab_value_rows,
-        "diagnoses":   extracted.get("diagnoses", []) if extracted else [],
+        "medications":   medications_rows,
+        "lab_values":    lab_value_rows,
+        "diagnoses":     extracted.get("diagnoses", []) if extracted else [],
+        "new_conflicts": new_conflicts,
     }
 
 

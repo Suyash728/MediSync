@@ -38,6 +38,13 @@ class SeverityLevel(str, Enum):
     severe   = "severe"
 
 
+class ConflictSeverity(str, Enum):
+    """Severity values used specifically for drug-drug interaction alerts."""
+    minor    = "minor"
+    moderate = "moderate"
+    major    = "major"
+
+
 class ProcessingStatus(str, Enum):
     pending      = "pending"
     processing   = "processing"
@@ -135,12 +142,12 @@ class DrugConflict(BaseModel):
     patient_id:       UUID
     drug_a:           str
     drug_b:           str
-    severity:         SeverityLevel
-    description:      str   # Plain-English explanation of the interaction
-    recommendation:   str   # What the patient / clinician should do
-    detected_at:      datetime
-    record_ids:       list[UUID]   # Records that surface these two drugs
+    severity:         ConflictSeverity
+    mechanism:        str | None = None   # Pharmacological mechanism from the dataset
+    description:      str | None = None   # Clinical description from the dataset
+    explanation:      str | None = None   # LLM-generated plain-language patient explanation
     is_acknowledged:  bool = False
+    detected_at:      datetime
 
     model_config = {"from_attributes": True}
 
