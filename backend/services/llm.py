@@ -281,60 +281,159 @@ def _try_gemini_extraction_sync(prompt: str) -> Optional[str]:
 
 # ── Clinical summary ─────────────────────────────────────────────────────────
 #
-# Prompt is deliberately clinical and factual.  No casual language, no "gentle"
-# framing.  The patient wants clear information, not reassurance theatre.
+# Summary is generated AFTER the reference range fallback so it can cite
+# resolved ranges and flag abnormal values even when the document didn't
+# include a reference column.  The prompt is split into two halves so the
+# resolved lab block can be injected between them via concatenation.
 
 _SUMMARY_SYSTEM = (
     "You are a clinical documentation assistant producing concise, factual medical summaries."
 )
 
-# Build the summary prompt via concatenation for the same reason as above.
-_SUMMARY_INSTRUCTIONS = """Write a concise clinical summary of this medical document.
+_SUMMARY_PREAMBLE = """Write a concise clinical summary of this medical document.
 
 Requirements:
 - State the document type and date if present.
 - List confirmed diagnoses by name (if any). If none, state "No diagnoses identified."
 - List all medications with dosage and frequency (if any). If none, state "No medications identified."
-- State abnormal lab values with their result and reference range (if any).
-  If none, state "No abnormal lab values identified."
+- For lab values use ONLY the resolved lab data provided below — not the raw document text.
+  - ABNORMAL values lead: list every abnormal value explicitly with test name, measured value
+    with units, reference range, and whether it is HIGH or LOW.
+  - When the reference range comes from standard guidelines (not the document), write
+    "based on standard reference range" after citing it.
+  - If a value has no reference range at all, do not speculate about its normality.
+  - If no abnormal values found, state "No abnormal lab values identified."
+  - Close the lab section with exactly ONE sentence listing parameters confirmed within range
+    (is_abnormal=false in the data below). Use this format:
+      • Some abnormal, some normal → "All other measured parameters — [names] — are within the reference range."
+      • All values normal (none abnormal) → "All measured parameters are within the reference range — [names]."
+      • All values abnormal (none normal) → omit this sentence entirely.
+    List test names only — no values, no units, no ranges in the normal-confirmation sentence.
 - Note any follow-up instructions or clinical recommendations mentioned in the document.
-- Do not speculate or add information not present in the source text.
-- Maximum 200 words. Clinical tone throughout.
+- Do not speculate or add information not present in the resolved data or source text.
+- Maximum 250 words. Clinical tone throughout.
 
-Extracted structured data:
+Resolved lab values (reference ranges supplemented from WHO/ICMR standards where absent in document):
 """
 
-_MAX_SUMMARY_TOKENS = 400   # ~200 words with headroom
+_SUMMARY_MID = """
+
+Extracted structured data (medications, diagnoses — lab values superseded by resolved data above):
+"""
+
+_MAX_SUMMARY_TOKENS = 500   # ~250 words with headroom for normal-confirmation closing line
 
 
-async def summarise_record_async(raw_text: str, entities: dict) -> str:
+async def summarise_record_async(
+    raw_text: str,
+    entities: dict,
+    resolved_lab_values: list[dict] | None = None,
+) -> str:
     """Generate a factual clinical summary.  Async (non-blocking I/O path).
+
+    Must be called AFTER the reference range fallback so that resolved_lab_values
+    contains complete reference ranges and is_abnormal flags.
 
     Tries Groq first; falls back to Gemini; falls back to deterministic template
     if both APIs fail (e.g. during offline demo or API outage).
 
     Args:
-        raw_text:  Raw OCR text (truncated to 3000 chars in the prompt).
-        entities:  The structured extraction dict from extract_structured_async().
+        raw_text:             Raw OCR text (truncated to 3000 chars in the prompt).
+        entities:             The structured extraction dict from extract_structured_async().
+        resolved_lab_values:  The fully resolved lab_value DB rows after reference fallback.
+                              When provided, this supersedes entities["lab_values"] for
+                              all abnormal-value callouts in the summary.
     """
-    prompt = _build_summary_prompt(raw_text, entities)
+    prompt = _build_summary_prompt(raw_text, entities, resolved_lab_values)
     result = await _try_groq_summary_async(prompt)
     if result is None:
         result = _try_gemini_summary_sync(prompt)
     if result is None:
-        result = _fallback_summary(entities)
+        result = _fallback_summary(entities, resolved_lab_values)
     return result
 
 
-def _build_summary_prompt(raw_text: str, entities: dict) -> str:
-    entities_str = json.dumps(entities, indent=2, default=str)
+def _build_summary_prompt(
+    raw_text: str,
+    entities: dict,
+    resolved_lab_values: list[dict] | None = None,
+) -> str:
+    lab_block = _format_resolved_labs(resolved_lab_values or [])
+    # Exclude raw lab_values from the entities block — the resolved list supersedes it
+    entities_for_summary = {k: v for k, v in entities.items() if k != "lab_values"}
+    entities_str = json.dumps(entities_for_summary, indent=2, default=str)
     truncated    = raw_text[:3000] if len(raw_text) > 3000 else raw_text
     return (
-        _SUMMARY_INSTRUCTIONS
+        _SUMMARY_PREAMBLE
+        + lab_block
+        + _SUMMARY_MID
         + entities_str
         + "\n\nRaw text (first 3000 chars):\n"
         + truncated
     )
+
+
+def _format_resolved_labs(lab_rows: list[dict]) -> str:
+    """Format resolved lab_value DB rows into a readable block for the summary prompt."""
+    if not lab_rows:
+        return "  (no lab values extracted)"
+
+    lines = []
+    for lab in lab_rows:
+        name      = lab.get("test_name") or "?"
+        value_str = str(lab.get("value") or "?")
+        unit      = lab.get("unit") or ""
+        ref_range = lab.get("reference_range") or ""
+        ref_src   = lab.get("reference_source") or ""
+        abnormal  = lab.get("is_abnormal")
+
+        display_value = f"{value_str} {unit}".strip()
+
+        if ref_range:
+            src_note = " (standard reference range)" if ref_src == "standard" else " (document reference range)"
+            ref_str  = f"ref {ref_range}{src_note}"
+        else:
+            ref_str = "no reference range available"
+
+        if abnormal is True:
+            direction = _compute_direction(value_str, ref_range)
+            flag = f" — ABNORMAL {direction}".rstrip() if direction else " — ABNORMAL"
+        elif abnormal is False:
+            flag = " — within range"
+        else:
+            flag = " — abnormality unknown (no range)"
+
+        lines.append(f"  • {name}: {display_value}, {ref_str}{flag}")
+
+    return "\n".join(lines)
+
+
+def _compute_direction(value_str: str, range_str: str) -> str:
+    """Return 'HIGH', 'LOW', or '' for a value vs a reference range string."""
+    import re as _re
+    try:
+        num_m = _re.search(r"-?[\d,]+\.?\d*", value_str)
+        if not num_m:
+            return ""
+        num = float(num_m.group().replace(",", ""))
+        rng = range_str.replace(",", "").strip()
+
+        m = _re.match(r"^([\d.]+)\s*[-–—]\s*([\d.]+)$", rng)
+        if m:
+            low, high = float(m.group(1)), float(m.group(2))
+            if num < low:
+                return "LOW"
+            if num > high:
+                return "HIGH"
+            return ""
+
+        if _re.match(r"^<\s*[\d.]+$", rng):
+            return "HIGH"   # value is above the upper-only threshold
+        if _re.match(r"^>\s*[\d.]+$", rng):
+            return "LOW"    # value is below the lower-only threshold
+    except Exception:
+        pass
+    return ""
 
 
 async def _try_groq_summary_async(prompt: str) -> Optional[str]:
@@ -384,7 +483,7 @@ def _try_gemini_summary_sync(prompt: str) -> Optional[str]:
         return None
 
 
-def _fallback_summary(entities: dict) -> str:
+def _fallback_summary(entities: dict, resolved_lab_values: list[dict] | None = None) -> str:
     """Deterministic template used when both LLM APIs are unavailable."""
     logger.warning("Both LLM APIs failed — using template fallback summary.")
     parts: list[str] = []
@@ -404,8 +503,11 @@ def _fallback_summary(entities: dict) -> str:
     else:
         parts.append("No medications identified.")
 
-    labs = entities.get("lab_values", [])
-    abnormal = [lv for lv in labs if lv.get("is_abnormal")]
+    # Prefer resolved lab values (post-fallback) over raw extraction for abnormal callouts
+    labs     = resolved_lab_values if resolved_lab_values is not None else entities.get("lab_values", [])
+    abnormal = [lv for lv in labs if lv.get("is_abnormal") is True]
+    normal   = [lv for lv in labs if lv.get("is_abnormal") is False]
+
     if abnormal:
         flagged = ", ".join(
             f"{lv.get('test_name', '?')} {lv.get('value', '?')}"
@@ -414,6 +516,19 @@ def _fallback_summary(entities: dict) -> str:
         parts.append(f"Abnormal values: {flagged}.")
     else:
         parts.append("No abnormal lab values identified.")
+
+    # Normal-confirmation closing line — mirrors the LLM prompt rules
+    if normal and abnormal:
+        normal_names = ", ".join(lv.get("test_name", "?") for lv in normal)
+        parts.append(
+            f"All other measured parameters — {normal_names} — are within the reference range."
+        )
+    elif normal and not abnormal:
+        normal_names = ", ".join(lv.get("test_name", "?") for lv in normal)
+        parts.append(
+            f"All measured parameters are within the reference range — {normal_names}."
+        )
+    # All abnormal → omit the closing line
 
     parts.append("Please share this document with your clinician for formal review.")
     return " ".join(parts)
