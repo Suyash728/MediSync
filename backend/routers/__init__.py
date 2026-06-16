@@ -9,5 +9,6 @@ from routers.records   import router as records
 from routers.conflicts import router as conflicts
 from routers.share     import router as share
 from routers.abha      import router as abha
+from routers.profile   import router as profile
 
-__all__ = ["upload", "process", "records", "conflicts", "share", "abha"]
+__all__ = ["upload", "process", "records", "conflicts", "share", "abha", "profile"]
