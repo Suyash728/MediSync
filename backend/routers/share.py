@@ -21,6 +21,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from models.schemas import ShareGrantCreate
 from utils.auth import get_current_patient
 from utils.db import get_supabase
+from utils.storage import get_signed_url
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -219,7 +220,37 @@ async def view_shared_records(token: str) -> dict:
     # Both None → no filter → share ALL records (patient's explicit choice)
 
     records_result = query.execute()
-    records: list[dict] = records_result.data
+    raw_records: list[dict] = records_result.data
+
+    # Enrich each record: signed URL for the original document + child rows.
+    # Signed URLs are generated server-side using the service-role key — the
+    # clinician's browser never touches Storage directly or sees our credentials.
+    records: list[dict] = []
+    for rec in raw_records:
+        file_url: str | None = None
+        if rec.get("file_path"):
+            try:
+                file_url = get_signed_url(rec["file_path"], expires_in=3600)
+            except Exception as exc:
+                logger.warning("share: signed URL failed for record %s: %s", rec["id"][:8], exc)
+
+        # Medications extracted from this record
+        meds = (
+            supabase.table("medications")
+            .select("id, name, dosage, frequency, duration, is_active, low_confidence")
+            .eq("record_id", rec["id"])
+            .execute()
+        ).data
+
+        # Lab values extracted from this record
+        labs = (
+            supabase.table("lab_values")
+            .select("id, test_name, value, unit, reference_range, reference_source, is_abnormal")
+            .eq("record_id", rec["id"])
+            .execute()
+        ).data
+
+        records.append({**rec, "file_url": file_url, "medications": meds, "lab_values": labs})
 
     # Audit: every clinician view is logged.
     # actor_id is the first 8 chars of the token — enough to correlate multiple

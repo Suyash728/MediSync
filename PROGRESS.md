@@ -648,3 +648,85 @@ git add backend/routers/share.py \
         frontend/app/\(patient\)/record/\[id\]/page.tsx
 
 git commit -m "Phase 4: selective sharing, clinician view, and access audit log"
+
+# Phase 4 patch — share link 404, access history filtering, share log details.
+
+Summary
+BUG 1 — 404 on clinician link
+Root cause: app/(clinician)/shared/[token]/page.tsx uses a route group, so Next.js strips the (clinician) part and maps the file to URL /shared/[token]. But the frontend generated links as /clinician/shared/<token> — a URL that had no matching file.
+
+Fix: Created app/clinician/shared/[token]/page.tsx as a real path segment (maps to /clinician/shared/<token>). Replaced the old (clinician)/shared/[token]/page.tsx with a redirect() so /shared/<token> also works.
+
+BUG 2 — Patient's own views showing in share history
+Fix: Added .in("action", ["share_create", "share_revoke", "share_view"]) to the Supabase query in /share page.tsx. The patient's own view and download events are now excluded.
+
+BUG 3 — Share link created entry has no details
+Fix (backend): When scope_record_ids has exactly one entry, create_share_grant now fetches that record's title and document_date and stores them in the access_log metadata.
+
+Fix (frontend): Access history now renders share_create entries with: heading "Share link created — [record title]", plus detail lines for document date, expiry, and recipient name.
+
+Manual steps
+
+# No migration needed — no schema changes
+
+cd backend && uvicorn main:app --reload
+# frontend: npm run dev (already running)
+Test:
+
+Create a share link for a specific record → copy the generated URL → open in incognito → should load the clinician view (no more 404)
+/share access history → should NOT show your own dashboard record views
+Create a new share for a specific record → check access history → the "Share link created" entry should show the record title, document date, expiry, and recipient
+What to commit
+
+git add "frontend/app/clinician/shared/[token]/page.tsx" \
+        "frontend/app/(clinician)/shared/[token]/page.tsx" \
+        frontend/middleware.ts \
+        "frontend/app/(patient)/share/page.tsx" \
+        backend/routers/share.py
+
+git commit -m "Phase 4 patch: fix clinician 404, filter share history, enrich share_create audit metadata"
+
+# Phase 4 patch — clinician view shows original document + access history order.
+Summary
+BUG 1 — Clinician view: original document + full clinical data
+Backend (share.py): view_shared_records now imports get_signed_url from utils/storage. After the scoped records query, it iterates each record and:
+
+Calls get_signed_url(file_path, expires_in=3600) — server-side, service-role key, never exposed to the browser
+Fetches medications rows for that record
+Fetches lab_values rows for that record
+Returns the enriched record with file_url, medications, lab_values
+Frontend (clinician/shared/[token]/page.tsx): Full rewrite of the page and SharedRecordCard:
+
+Added MedicationRow, LabValueRow interfaces and file_url / medications / lab_values to SharedRecord
+New prominent "Read-only shared view" blue info Alert at the top of the main content (patient name, recipient, expiry, revoke note)
+Scope context strip below it
+Each SharedRecordCard now renders:
+Header: title, type badge, date/facility/doctor
+2-column grid: Original Document card (iframe for PDF, <img> for images, fallback for missing) + Clinical Summary card
+Medications table (only shown if medications exist)
+Lab values table (only shown if lab values exist; abnormal rows highlighted amber)
+A <Separator /> between records
+BUG 2 — Access history field order
+Swapped two blocks in share/page.tsx: Recipient now renders before Expires. Correct order is now:
+
+
+Share link created — [record title]
+Recipient: Dr. Sharma
+Expires: 23 Jun 2026, 02:05 pm
+[timestamp]
+Manual steps
+No migration needed. Just restart the backend to pick up the get_signed_url import and the enriched response:
+
+
+cd backend && uvicorn main:app --reload
+Test:
+
+Share a record → open the clinician link in incognito → should see the blue "Read-only shared view" banner, then the Original Document (PDF iframe or image), summary, and medications/lab tables
+Go to /share access history → "Share link created" entry → Recipient line should appear before Expires line
+What to commit
+
+git add backend/routers/share.py \
+        "frontend/app/clinician/shared/[token]/page.tsx" \
+        "frontend/app/(patient)/share/page.tsx"
+
+git commit -m "Phase 4 patch: clinician view shows original doc + tables, fix share history field order"
