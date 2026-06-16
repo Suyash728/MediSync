@@ -825,3 +825,23 @@ Manual steps still required:
 
 Run SQL: ALTER TABLE profiles ADD COLUMN IF NOT EXISTS preferred_language text DEFAULT 'en-IN';
 Add SARVAM_API_KEY=<your key> to frontend/.env.local
+
+# Phase 5A patch — complete i18n coverage + settings page fix
+Phase 5A patch is complete. Here's a summary of everything done across this session and the previous one:
+
+What was changed:
+
+File	Change
+frontend/components/UploadZone.tsx	All UI strings via useTranslations("upload") + tCard() for record type dropdown
+frontend/components/RecordCard.tsx	Added "use client", all strings via useTranslations("record_card"), ICU plurals
+frontend/app/(patient)/share/page.tsx	All static strings via useTranslations("share"), ACTION_KEY_MAP, translated expiry/scope in GrantRow
+frontend/app/(patient)/settings/page.tsx	ProfileState type, email fallback from auth, error state, not_provided for null fields
+backend/services/conflict.py	Fetches preferred_language per patient, passes language instruction to Groq (explanation/recommendation only)
+backend/services/llm.py	Metadata note in _build_summary_prompt for Indian-language title/facility/doctor
+frontend/package.json	"type": "module" added
+All 11 messages/*.json	New record_card namespace (6 types + 7 count/status keys), 18 new share keys, 3 new settings keys
+Manual steps to test:
+
+cd frontend && npm run dev — visit /dashboard, change language in /settings, re-upload a document and confirm the upload form labels, record card badges, and summary language all reflect the selection
+Visit /share and verify the access history section shows translated action labels, expiry, and recipient fields
+Visit /settings and confirm account info shows real data (not "—"), and null fields show "Not provided" in the selected language
