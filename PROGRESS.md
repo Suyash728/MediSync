@@ -730,3 +730,75 @@ git add backend/routers/share.py \
         "frontend/app/(patient)/share/page.tsx"
 
 git commit -m "Phase 4 patch: clinician view shows original doc + tables, fix share history field order"
+
+# Phase 4 UI/UX patch — 5 fixes before Phase 5.
+Summary
+FIX 1 — Document viewer sizing
+Changed in both record/[id]/page.tsx and clinician/shared/[token]/page.tsx:
+
+PDF iframe: h-72 → h-[50vh] sm:h-[70vh] — 50 viewport height on mobile, 70 on desktop
+Image: max-h-72 → max-h-[50vh] sm:max-h-[70vh] — same responsive max height, object-contain preserved
+The card has no fixed height so it expands to fit.
+
+FIX 2 — Timeline date layout
+In timeline/page.tsx:
+
+Added User, CalendarDays to imports
+Replaced the separate facility <p> with a single flex flex-wrap items-center gap-x-3 div containing date + facility + doctor all inline — they wrap on mobile but flow horizontally first
+Simplified the left date column (which was stacking day/month/year with block spans) to show just "Mon YYYY" — the full date is now in the inline row; the column just anchors the timeline dot
+FIX 3 — Upload form document type
+In UploadZone.tsx:
+
+useState<RecordType>("prescription") → useState<RecordType | "">("")
+Added <option value="" disabled>Select a type</option> as first select item
+reset() now resets recordType to ""
+Submit validates !recordType → shows inline error "Please select a document type."
+Upload button disabled when !recordType (in addition to existing !selectedFile guard)
+FIX 4 — Welcome modal
+New WelcomeModal.tsx:
+
+On mount, queries profiles.has_onboarded. If false, opens the Dialog.
+Content: what MediSync does, 4 feature bullets, amber limitations box (AI extraction caveat, drug dataset caveat, link expiry)
+CTA: "Get started — Upload your first record" → marks onboarded + scrolls to #upload-zone
+Any dismiss path (button / backdrop / Escape) marks onboarded via Supabase update
+Never shown again (DB flag, not localStorage — persists across devices)
+Added <WelcomeModal /> to dashboard page and wrapped UploadZone in <div id="upload-zone">.
+
+FIX 5 — Alerts red dot
+In AppShell.tsx:
+
+useEffect fetches drug_conflicts count where is_acknowledged = false on mount
+Listens for window event "medisync:alerts-update" to re-fetch
+Both desktop and mobile nav render a h-2 w-2 rounded-full bg-red-500 dot absolutely positioned over the Bell icon when alertCount > 0
+Event dispatched from:
+
+dashboard/page.tsx → handleUploadSuccess (after new conflicts arrive)
+alerts/page.tsx → handleAcknowledge (after an alert is reviewed)
+SQL for FIX 4
+Run this once against your Supabase project:
+
+
+ALTER TABLE profiles
+  ADD COLUMN IF NOT EXISTS has_onboarded boolean NOT NULL DEFAULT false;
+No RLS changes needed — the existing patient RLS policy on profiles already allows each patient to SELECT and UPDATE their own row.
+
+Manual steps
+
+# 1. Run the SQL above in Supabase SQL editor (one-time)
+
+# 2. Restart backend (no backend changes in this patch)
+cd backend && uvicorn main:app --reload
+
+# Frontend already running via npm run dev
+What to commit
+
+git add "frontend/app/(patient)/record/[id]/page.tsx" \
+        "frontend/app/clinician/shared/[token]/page.tsx" \
+        "frontend/app/(patient)/timeline/page.tsx" \
+        frontend/components/UploadZone.tsx \
+        frontend/components/WelcomeModal.tsx \
+        frontend/components/AppShell.tsx \
+        "frontend/app/(patient)/dashboard/page.tsx" \
+        "frontend/app/(patient)/alerts/page.tsx"
+
+git commit -m "Phase 4 UI patch: doc viewer sizing, timeline layout, upload type validation, welcome modal, alerts nav dot"
