@@ -551,3 +551,100 @@ git add supabase/migrations/006_drug_conflicts_add_recommendation.sql \
         frontend/app/(patient)/alerts/page.tsx
 
 git commit -m "Phase 3 patch: split explanation/recommendation columns in drug_conflicts"
+
+# Phase 3 patch — Document-type-aware summary summary
+What was wrong: summarise_record_async used a single lab-report-oriented prompt for every document type. A prescription upload would get a summary containing "No abnormal lab values identified." Imaging reports would get spurious lab commentary. The resolved-lab block was injected into every prompt regardless of relevance.
+
+What changed (2 files):
+
+backend/services/llm.py:
+
+Removed _SUMMARY_PREAMBLE and _SUMMARY_MID constants (single-preamble approach gone).
+Added _INSTRUCTIONS: dict[str, str] — six entries, one per RecordType:
+prescription — meds + indication + special instructions; explicitly forbids lab values; closes with the drug-check sentence
+lab_report — full current structure (abnormal lead, normal-confirmation closing line, standard-ref badge)
+discharge_summary — primary/secondary diagnoses, procedures, discharge meds, condition at discharge, follow-up; mentions labs only when clinically significant
+imaging — study type, body part, radiologist findings (quoted), impression; forbids lab values and meds
+vaccination — vaccine name, dose #, date, next due date, lot number; forbids lab/med language
+other — generic, content-driven
+Added _LAB_BLOCK_TYPES = frozenset({"lab_report", "discharge_summary"}) — resolved-lab block is injected into the prompt only for these two types.
+summarise_record_async — added record_type: str = "other" parameter, passes it to _build_summary_prompt and _fallback_summary.
+_build_summary_prompt — selects instruction block from _INSTRUCTIONS; includes lab block + different header for lab_report vs discharge_summary; omits it entirely for all other types.
+_fallback_summary — added record_type parameter, branches: prescription shows meds+indication; lab_report uses full existing logic; discharge_summary shows diagnoses+discharge meds; imaging/vaccination have minimal type-appropriate text; other is generic.
+backend/routers/upload.py:
+
+Added record_type as the fourth argument to llm.summarise_record_async(...). The variable is already available from the form field.
+Manual steps
+
+cd backend && uvicorn main:app --reload
+Test each type:
+
+Upload a prescription → summary should list drugs + indication, close with "Drug interactions... checked automatically." No mention of lab values.
+Upload a lab report → summary should call out abnormal values by name/value/range, close with normal-confirmation sentence.
+Upload an imaging report (or a document labelled as imaging) → summary should describe study type + findings + impression only.
+No migrations, no npm changes needed.
+
+What to commit
+
+git add backend/services/llm.py backend/routers/upload.py
+
+git commit -m "Phase 3 patch: document-type-aware summary prompts (prescription/lab/discharge/imaging/vaccination)"
+
+# Phase 4 — Summary
+What was built (6 files):
+
+backend/routers/share.py — full implementation of all 4 share endpoints:
+  POST /share: generates secrets.token_hex(32) token, inserts share_grants row, writes access_log (share_create), returns {grant, token}.
+  GET /share: lists all grants for the patient (newest-first, includes revoked).
+  DELETE /share/{id}: verifies ownership (explicit patient_id check, not just RLS), sets is_active=False, writes access_log (share_revoke).
+  GET /share/view/{token}: public, no auth. Three-gate check: token exists → is_active → not expired. All failures return 403 (never 404 — prevents token enumeration). Fetches scoped records (scope_record_ids / scope_record_types / all), writes access_log (share_view, actor_id = token[:8]), returns patient_name + records + scope_label.
+
+frontend/lib/api.ts — shareApi with create(), list(), revoke() helpers (view endpoint is called server-side in the clinician page).
+
+frontend/components/ShareDialog.tsx — reusable dialog component:
+  Props: recordId (pre-populate scope to this record), recordTitle, onCreated callback.
+  Step 1 (form): recipient name, scope pill toggle (This record / All records / By type), expiry select.
+  Step 2 (created): copyable link input + copy-to-clipboard button.
+  Used from: record detail page Share button and /share page.
+
+frontend/app/(patient)/share/page.tsx — full share management page:
+  New share link button (ShareDialog trigger with no recordId).
+  Active grants list with copy-link and revoke actions per row.
+  Past (expired/revoked) grants section (dimmed).
+  Access history: last 20 access_log rows queried directly from Supabase (RLS scopes to auth.uid()).
+
+frontend/app/(clinician)/shared/[token]/page.tsx — async server component (no client JS):
+  Fetches GET /share/view/{token} server-side (no CORS exposure).
+  Invalid/expired/revoked → error screen with human-readable message from the backend.
+  Valid → share context banner + list of SharedRecordCard components showing title, type, date, facility, doctor, LLM summary.
+
+frontend/app/(patient)/record/[id]/page.tsx — wired Share button:
+  Replaced disabled <Button> with <ShareDialog recordId={...} recordTitle={...} />.
+  Removed now-unused Share2 import.
+
+No new SQL migration needed — share_grants and access_log tables were fully defined in 001_schema.sql.
+
+Manual steps
+
+cd backend && uvicorn main:app --reload
+cd frontend && npm run dev
+
+Test:
+1. Open any record → click Share → fill recipient name → "This record only" scope → 7 days → Create link
+2. Confirm dialog shows step 2 with a /clinician/shared/... URL. Click Copy.
+3. Open the URL in a new tab (or incognito) → clinician view shows the patient's record with summary. No login prompt.
+4. Go to /share → grant appears under Active Links with Revoke button.
+5. Click Revoke → confirm → grant moves to Past Links.
+6. Reload the clinician URL in the other tab → "This share link has been revoked by the patient."
+7. Create a new grant → /share Access History shows "Share link created" and "Clinician viewed records" entries.
+
+What to commit
+
+git add backend/routers/share.py \
+        frontend/lib/api.ts \
+        frontend/components/ShareDialog.tsx \
+        frontend/app/\(patient\)/share/page.tsx \
+        frontend/app/\(clinician\)/shared/\[token\]/page.tsx \
+        frontend/app/\(patient\)/record/\[id\]/page.tsx
+
+git commit -m "Phase 4: selective sharing, clinician view, and access audit log"
