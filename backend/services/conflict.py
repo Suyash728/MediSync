@@ -264,17 +264,39 @@ def _find_interaction(norm_a: str, norm_b: str) -> Optional[_DDIPair]:
 
 # ── LLM explanation generation ─────────────────────────────────────────────────
 
+# Maps BCP-47 language codes → plain English names for the LLM language instruction.
+# Drug names, severity, and mechanism always stay in English — only the patient-facing
+# explanation and recommendation text is translated.
+_LANGUAGE_NAMES: dict[str, str] = {
+    "en-IN": "English",
+    "hi-IN": "Hindi",
+    "ta-IN": "Tamil",
+    "bn-IN": "Bengali",
+    "te-IN": "Telugu",
+    "kn-IN": "Kannada",
+    "ml-IN": "Malayalam",
+    "mr-IN": "Marathi",
+    "gu-IN": "Gujarati",
+    "pa-IN": "Punjabi",
+    "or-IN": "Odia",
+}
+
+
 async def _generate_explanation(
     drug_a_raw: str,
     drug_b_raw: str,
     severity: str,
     mechanism: str,
     description: str,
+    language_code: str = "en-IN",
 ) -> tuple[str, str]:
     """Generate a patient-facing explanation and action recommendation via Groq.
 
     THE DDI MATCH IS ALREADY CONFIRMED from the deterministic CSV lookup.
     The LLM only writes clear, calm, patient-facing content — not detection.
+
+    Drug names, severity, and mechanism stay in English regardless of language_code.
+    Only the EXPLANATION and RECOMMENDATION text is written in the patient's language.
 
     Returns:
         (explanation, recommendation)
@@ -291,6 +313,14 @@ async def _generate_explanation(
     if client is None:
         return description, _FALLBACK_REC
 
+    lang_name = _LANGUAGE_NAMES.get(language_code, "English")
+    lang_instruction = (
+        f"\n\nIMPORTANT: Write ONLY the EXPLANATION and RECOMMENDATION text in {lang_name}. "
+        "Drug names, severity level, and the mechanism field must remain in English."
+        if lang_name != "English"
+        else ""
+    )
+
     prompt = (
         f"You are explaining a drug interaction to a patient in plain language.\n\n"
         f"Drug A: {drug_a_raw}\n"
@@ -303,6 +333,7 @@ async def _generate_explanation(
         f"RECOMMENDATION: (1 sentence) What the patient should do.\n\n"
         f"Rules: factual, calm, under 80 words total. Do not diagnose, prescribe, "
         f"or alarm unnecessarily. Use exactly the labels EXPLANATION: and RECOMMENDATION:."
+        f"{lang_instruction}"
     )
 
     try:
@@ -378,6 +409,23 @@ async def run_conflict_check(patient_id: str) -> list[dict]:
         norm_pairs.append((med, norm))
         logger.debug("conflict: '%s' → '%s'", med["name"], norm)
 
+    # Fetch the patient's preferred language so explanations are generated in their script.
+    # Drug names, severity, and mechanism always stay in English — only explanation text changes.
+    preferred_language = "en-IN"
+    try:
+        lang_result = (
+            supabase.table("profiles")
+            .select("preferred_language")
+            .eq("id", patient_id)
+            .single()
+            .execute()
+        )
+        fetched = (lang_result.data or {}).get("preferred_language")
+        if fetched:
+            preferred_language = fetched
+    except Exception as exc:
+        logger.warning("conflict: could not fetch preferred_language for %s: %s", patient_id[:8], exc)
+
     # Fetch existing conflict pairs so we don't re-insert or reset acknowledgements
     existing_result = (
         supabase.table("drug_conflicts")
@@ -427,6 +475,7 @@ async def run_conflict_check(patient_id: str) -> list[dict]:
             explanation, recommendation = await _generate_explanation(
                 display_a, display_b,
                 ddi.severity, ddi.mechanism, ddi.description,
+                preferred_language,
             )
 
             conflicts_to_insert.append({

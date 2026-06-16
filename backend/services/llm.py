@@ -490,8 +490,16 @@ def _build_summary_prompt(
             f"\n\nIMPORTANT: Write this entire summary in {lang_name}. "
             "Use clear, simple language appropriate for a patient reading their own medical record."
         )
+        # The patient's metadata (document title, facility name, doctor name) may be written
+        # in an Indian language script — alert the LLM to preserve them as-is.
+        metadata_note = (
+            "\n\nNote: the document title, facility name, and doctor name provided by the "
+            "patient may be written in an Indian language — preserve them as-is and understand "
+            "them in that language when generating the summary."
+        )
     else:
         lang_instruction = ""
+        metadata_note = ""
 
     return (
         instructions
@@ -500,6 +508,7 @@ def _build_summary_prompt(
         + entities_str
         + "\n\nRaw document text (first 3000 chars):\n"
         + truncated
+        + metadata_note
         + lang_instruction
     )
 
