@@ -396,12 +396,31 @@ _LAB_BLOCK_TYPES = frozenset({"lab_report", "discharge_summary"})
 
 _MAX_SUMMARY_TOKENS = 500
 
+# Maps BCP-47 language codes (used as preferred_language in profiles) to the
+# plain English name appended to the summary prompt so the LLM knows which
+# language to write in.  Structured extraction is always English — only the
+# human-readable summary changes.
+_LANGUAGE_NAMES: dict[str, str] = {
+    "en-IN": "English",
+    "hi-IN": "Hindi",
+    "ta-IN": "Tamil",
+    "bn-IN": "Bengali",
+    "te-IN": "Telugu",
+    "kn-IN": "Kannada",
+    "ml-IN": "Malayalam",
+    "mr-IN": "Marathi",
+    "gu-IN": "Gujarati",
+    "pa-IN": "Punjabi",
+    "or-IN": "Odia",
+}
+
 
 async def summarise_record_async(
     raw_text: str,
     entities: dict,
     resolved_lab_values: list[dict] | None = None,
     record_type: str = "other",
+    language_code: str = "en-IN",
 ) -> str:
     """Generate a factual clinical summary.  Async (non-blocking I/O path).
 
@@ -420,7 +439,7 @@ async def summarise_record_async(
         record_type:          The document type (matches RecordType enum values).
                               Selects the type-specific prompt from _INSTRUCTIONS.
     """
-    prompt = _build_summary_prompt(raw_text, entities, resolved_lab_values, record_type)
+    prompt = _build_summary_prompt(raw_text, entities, resolved_lab_values, record_type, language_code)
     result = await _try_groq_summary_async(prompt)
     if result is None:
         result = _try_gemini_summary_sync(prompt)
@@ -434,6 +453,7 @@ def _build_summary_prompt(
     entities: dict,
     resolved_lab_values: list[dict] | None = None,
     record_type: str = "other",
+    language_code: str = "en-IN",
 ) -> str:
     instructions = _INSTRUCTIONS.get(record_type, _INSTRUCTIONS["other"])
 
@@ -462,6 +482,17 @@ def _build_summary_prompt(
     entities_str = json.dumps(entities_for_summary, indent=2, default=str)
     truncated    = raw_text[:3000] if len(raw_text) > 3000 else raw_text
 
+    # Append a language instruction when the patient's preferred language is not English.
+    # Only the human-readable summary changes — structured extraction always stays in English.
+    lang_name = _LANGUAGE_NAMES.get(language_code, "English")
+    if lang_name != "English":
+        lang_instruction = (
+            f"\n\nIMPORTANT: Write this entire summary in {lang_name}. "
+            "Use clear, simple language appropriate for a patient reading their own medical record."
+        )
+    else:
+        lang_instruction = ""
+
     return (
         instructions
         + lab_section
@@ -469,6 +500,7 @@ def _build_summary_prompt(
         + entities_str
         + "\n\nRaw document text (first 3000 chars):\n"
         + truncated
+        + lang_instruction
     )
 
 

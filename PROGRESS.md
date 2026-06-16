@@ -802,3 +802,26 @@ git add "frontend/app/(patient)/record/[id]/page.tsx" \
         "frontend/app/(patient)/alerts/page.tsx"
 
 git commit -m "Phase 4 UI patch: doc viewer sizing, timeline layout, upload type validation, welcome modal, alerts nav dot"
+
+# Phase 5A — complete. All files are written and npx tsc --noEmit passes clean.
+
+What was done:
+
+File	Change
+app/layout.tsx	NextIntlClientProvider + lazy Noto Sans Google Fonts per locale
+i18n/request.ts	Cookie-based locale config (medisync_locale)
+next.config.js	next-intl plugin wired up
+messages/en-IN.json + 10 others	11 full translation files
+components/WelcomeModal.tsx	Language selector as first field; saves preferred_language + sets cookie + reloads
+components/AppShell.tsx	Nav labels via useTranslations("nav")
+app/(patient)/settings/page.tsx	Full rewrite — language section, read-only account info, danger zone placeholder
+app/(patient)/dashboard/page.tsx	useTranslations("dashboard") + useTranslations("common")
+app/(patient)/alerts/page.tsx	useTranslations("alerts") for all labels including severity
+app/(patient)/record/[id]/page.tsx	Full rewrite — all strings translated + TTS button (idle/loading/playing/paused states)
+app/api/tts/route.ts	New: Sarvam AI POST handler, sentence-boundary chunking, WAV concat
+backend/services/llm.py	language_code param on summarise_record_async + _build_summary_prompt
+backend/routers/upload.py	Fetches preferred_language from profiles before calling LLM
+Manual steps still required:
+
+Run SQL: ALTER TABLE profiles ADD COLUMN IF NOT EXISTS preferred_language text DEFAULT 'en-IN';
+Add SARVAM_API_KEY=<your key> to frontend/.env.local

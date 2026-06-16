@@ -210,13 +210,29 @@ async def upload_document(
         _apply_reference_fallback(lab_value_rows)
 
     # ── 7.5. Clinical summary — must run AFTER reference fallback ─────────────
-    # Passing lab_value_rows gives the LLM resolved reference ranges and
-    # is_abnormal flags, so it can call out abnormal values even when the
-    # document had no reference range column.
+    # Fetch the patient's preferred_language so the summary is generated in
+    # their chosen script (only the summary text changes — extraction stays English).
+    preferred_language = "en-IN"
+    try:
+        lang_result = (
+            supabase.table("profiles")
+            .select("preferred_language")
+            .eq("id", patient_id)
+            .single()
+            .execute()
+        )
+        fetched = (lang_result.data or {}).get("preferred_language")
+        if fetched:
+            preferred_language = fetched
+    except Exception as exc:
+        logger.warning("[%s] Could not fetch preferred_language: %s", record_id[:8], exc)
+
     if not error_msg:
-        logger.info("[%s] Summary start", record_id[:8])
+        logger.info("[%s] Summary start (lang=%s)", record_id[:8], preferred_language)
         try:
-            summary = await llm.summarise_record_async(raw_text, extracted, lab_value_rows, record_type)
+            summary = await llm.summarise_record_async(
+                raw_text, extracted, lab_value_rows, record_type, preferred_language,
+            )
             logger.info("[%s] Summary done", record_id[:8])
         except Exception as exc:
             # Non-fatal: record is still saved; patient can re-process later.
