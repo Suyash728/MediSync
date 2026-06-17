@@ -1,0 +1,443 @@
+{
+  "version": "1.0",
+  "sources": ["WHO", "ICMR", "API-IML Standard Reference Values for Indian Population"],
+  "note": "range_default is the union of male/female bounds and is used when patient sex is unknown.",
+  "tests": [
+
+    {
+      "canonical_name": "Hemoglobin",
+      "aliases": ["Hb", "HGB", "Hgb", "HB", "Haemoglobin", "Hemoglobin (Hb)", "Haemoglobin (Hb)", "Hgb (Hemoglobin)"],
+      "unit": "g/dL",
+      "range_male": "13.0 - 17.0",
+      "range_female": "12.0 - 15.0",
+      "range_default": "12.0 - 17.0"
+    },
+    {
+      "canonical_name": "RBC Count",
+      "aliases": ["RBC", "Red Blood Cells", "Red Cell Count", "Red Blood Cell Count", "Erythrocyte Count", "Erythrocytes", "RBC (Red Blood Cells)"],
+      "unit": "million cells/cmm",
+      "range_male": "4.5 - 5.5",
+      "range_female": "4.0 - 5.0",
+      "range_default": "4.0 - 5.5"
+    },
+    {
+      "canonical_name": "Total Leukocyte Count",
+      "aliases": [
+        "WBC", "TLC", "Total WBC", "WBC Count", "White Blood Cells", "Leukocytes",
+        "Leucocytes", "Total Leucocyte Count", "White Blood Cell Count", "White Cell Count",
+        "Total WBC Count", "Leukocyte Count", "Leucocyte Count"
+      ],
+      "unit": "cells/cmm",
+      "range_default": "4000 - 11000"
+    },
+    {
+      "canonical_name": "Platelet Count",
+      "aliases": [
+        "PLT", "Platelets", "Thrombocytes", "Plt Count", "Thrombocyte Count",
+        "Platelet", "Platelet (PLT)", "Blood Platelet Count"
+      ],
+      "unit": "/cmm",
+      "range_default": "150000 - 400000"
+    },
+    {
+      "canonical_name": "Hematocrit",
+      "aliases": [
+        "HCT", "PCV", "Packed Cell Volume", "Haematocrit", "Hct", "Pcv",
+        "Packed Red Cell Volume"
+      ],
+      "unit": "%",
+      "range_male": "40.0 - 52.0",
+      "range_female": "36.0 - 46.0",
+      "range_default": "36.0 - 52.0"
+    },
+    {
+      "canonical_name": "MCV",
+      "aliases": ["Mean Corpuscular Volume", "Mean Cell Volume", "MCV (Mean Corpuscular Volume)"],
+      "unit": "fL",
+      "range_default": "80.0 - 100.0"
+    },
+    {
+      "canonical_name": "MCH",
+      "aliases": ["Mean Corpuscular Hemoglobin", "Mean Cell Hemoglobin", "Mean Corpuscular Haemoglobin"],
+      "unit": "pg",
+      "range_default": "27.0 - 33.0"
+    },
+    {
+      "canonical_name": "MCHC",
+      "aliases": [
+        "Mean Corpuscular Hemoglobin Concentration", "Mean Cell Hemoglobin Concentration",
+        "Mean Corpuscular Haemoglobin Concentration"
+      ],
+      "unit": "g/dL",
+      "range_default": "31.5 - 36.0"
+    },
+    {
+      "canonical_name": "Neutrophils",
+      "aliases": [
+        "Neutrophil", "Neutrophil %", "Polymorphs", "PMN", "Granulocytes",
+        "Segmented Neutrophils", "Segs", "Neutrophils %"
+      ],
+      "unit": "%",
+      "range_default": "40 - 80"
+    },
+    {
+      "canonical_name": "Lymphocytes",
+      "aliases": ["Lymphocyte", "Lymphocyte %", "Lymphs", "Lymphocytes %"],
+      "unit": "%",
+      "range_default": "20 - 40"
+    },
+    {
+      "canonical_name": "Monocytes",
+      "aliases": ["Monocyte", "Monocyte %", "Monocytes %"],
+      "unit": "%",
+      "range_default": "2 - 10"
+    },
+    {
+      "canonical_name": "Eosinophils",
+      "aliases": ["Eosinophil", "Eosinophil %", "Eos", "Eosinophils %"],
+      "unit": "%",
+      "range_default": "1 - 6"
+    },
+    {
+      "canonical_name": "Basophils",
+      "aliases": ["Basophil", "Basophil %", "Baso", "Basophils %"],
+      "unit": "%",
+      "range_default": "0 - 1"
+    },
+
+    {
+      "canonical_name": "Fasting Blood Glucose",
+      "aliases": [
+        "FBS", "Fasting Glucose", "Blood Sugar Fasting", "BSF", "FBG",
+        "Fasting Sugar", "Glucose Fasting", "Fasting Blood Sugar", "FPG",
+        "Fasting Plasma Glucose", "Fasting Blood Glucose (FBG)", "Glucose (Fasting)"
+      ],
+      "unit": "mg/dL",
+      "range_default": "70 - 100"
+    },
+    {
+      "canonical_name": "Post Prandial Blood Glucose",
+      "aliases": [
+        "PPBS", "PP Blood Sugar", "Post Prandial Glucose", "Blood Sugar PP",
+        "2h PP", "2-Hour Post Prandial", "Post Prandial Sugar", "PPG",
+        "Glucose Post Prandial", "Blood Glucose PP", "Glucose (PP)"
+      ],
+      "unit": "mg/dL",
+      "range_default": "70 - 140"
+    },
+    {
+      "canonical_name": "Random Blood Glucose",
+      "aliases": ["RBS", "Random Sugar", "Blood Glucose Random", "Casual Glucose", "Random Glucose"],
+      "unit": "mg/dL",
+      "range_default": "70 - 140"
+    },
+    {
+      "canonical_name": "HbA1c",
+      "aliases": [
+        "Glycated Hemoglobin", "Glycosylated Hemoglobin", "A1c", "Hemoglobin A1c",
+        "Haemoglobin A1c", "GHb", "Glycohemoglobin", "HbA1C"
+      ],
+      "unit": "%",
+      "range_default": "< 5.7"
+    },
+    {
+      "canonical_name": "Serum Creatinine",
+      "aliases": [
+        "Creatinine", "CREA", "S. Creatinine", "S Creatinine", "Creat",
+        "Creatinine (Serum)", "Blood Creatinine"
+      ],
+      "unit": "mg/dL",
+      "range_male": "0.7 - 1.2",
+      "range_female": "0.5 - 1.0",
+      "range_default": "0.5 - 1.2"
+    },
+    {
+      "canonical_name": "Blood Urea",
+      "aliases": [
+        "Urea", "Serum Urea", "S. Urea", "S Urea", "BUN", "Blood Urea Nitrogen",
+        "Urea (Blood)", "Urea Nitrogen", "Blood Urea (BUN)"
+      ],
+      "unit": "mg/dL",
+      "range_default": "15 - 45"
+    },
+    {
+      "canonical_name": "Serum Uric Acid",
+      "aliases": [
+        "Uric Acid", "S. Uric Acid", "S Uric Acid", "Urate",
+        "Uric Acid (Serum)", "Serum Urate"
+      ],
+      "unit": "mg/dL",
+      "range_male": "3.5 - 7.2",
+      "range_female": "2.6 - 6.0",
+      "range_default": "2.6 - 7.2"
+    },
+
+    {
+      "canonical_name": "SGPT",
+      "aliases": [
+        "ALT", "Alanine Aminotransferase", "Alanine Transaminase", "GPT", "ALAT",
+        "Alanine Amino Transferase", "S. GPT", "SGPT (ALT)", "ALT (SGPT)"
+      ],
+      "unit": "U/L",
+      "range_male": "10 - 40",
+      "range_female": "7 - 35",
+      "range_default": "7 - 40"
+    },
+    {
+      "canonical_name": "SGOT",
+      "aliases": [
+        "AST", "Aspartate Aminotransferase", "Aspartate Transaminase", "GOT", "ASAT",
+        "S. GOT", "SGOT (AST)", "AST (SGOT)"
+      ],
+      "unit": "U/L",
+      "range_default": "10 - 40"
+    },
+    {
+      "canonical_name": "Total Bilirubin",
+      "aliases": [
+        "T. Bilirubin", "Bilirubin Total", "Bilirubin", "Bil Total", "TB",
+        "S. Bilirubin", "Total Bil", "Bilirubin (Total)"
+      ],
+      "unit": "mg/dL",
+      "range_default": "0.2 - 1.2"
+    },
+    {
+      "canonical_name": "Direct Bilirubin",
+      "aliases": [
+        "D. Bilirubin", "Bilirubin Direct", "Conjugated Bilirubin",
+        "Direct Bil", "DB", "Bilirubin (Direct)"
+      ],
+      "unit": "mg/dL",
+      "range_default": "0.0 - 0.3"
+    },
+    {
+      "canonical_name": "Indirect Bilirubin",
+      "aliases": [
+        "I. Bilirubin", "Bilirubin Indirect", "Unconjugated Bilirubin",
+        "Indirect Bil", "IB", "Bilirubin (Indirect)"
+      ],
+      "unit": "mg/dL",
+      "range_default": "0.1 - 1.0"
+    },
+    {
+      "canonical_name": "Alkaline Phosphatase",
+      "aliases": ["ALP", "ALKP", "Alk Phos", "Alkaline Phosphatase (ALP)", "SAP", "Alk. Phos."],
+      "unit": "U/L",
+      "range_default": "44 - 147"
+    },
+    {
+      "canonical_name": "Total Protein",
+      "aliases": [
+        "TP", "Serum Total Protein", "S. Total Protein", "Protein Total",
+        "Serum Proteins", "Total Serum Protein"
+      ],
+      "unit": "g/dL",
+      "range_default": "6.0 - 8.3"
+    },
+    {
+      "canonical_name": "Albumin",
+      "aliases": ["Serum Albumin", "S. Albumin", "Albumin (Serum)", "Alb"],
+      "unit": "g/dL",
+      "range_default": "3.4 - 5.4"
+    },
+    {
+      "canonical_name": "Globulin",
+      "aliases": ["Serum Globulin", "S. Globulin", "Globulin (Serum)", "Total Globulin"],
+      "unit": "g/dL",
+      "range_default": "2.3 - 3.5"
+    },
+
+    {
+      "canonical_name": "Total Cholesterol",
+      "aliases": [
+        "Cholesterol", "Cholesterol Total", "S. Cholesterol", "TC",
+        "Serum Cholesterol", "Cholesterol (Total)"
+      ],
+      "unit": "mg/dL",
+      "range_default": "< 200"
+    },
+    {
+      "canonical_name": "LDL Cholesterol",
+      "aliases": [
+        "LDL", "LDL-C", "LDL Cholesterol (Direct)", "Low Density Lipoprotein",
+        "LDL-Cholesterol", "LDL (Direct)", "LDL Chol"
+      ],
+      "unit": "mg/dL",
+      "range_default": "< 130"
+    },
+    {
+      "canonical_name": "HDL Cholesterol",
+      "aliases": [
+        "HDL", "HDL-C", "HDL Cholesterol (Direct)", "High Density Lipoprotein",
+        "HDL-Cholesterol", "HDL (Direct)", "HDL Chol"
+      ],
+      "unit": "mg/dL",
+      "range_male": "> 40",
+      "range_female": "> 50",
+      "range_default": "> 40"
+    },
+    {
+      "canonical_name": "Triglycerides",
+      "aliases": [
+        "TG", "Trigs", "Triglyceride", "Serum Triglycerides", "S. TG",
+        "Triglyceride (Serum)", "TGL"
+      ],
+      "unit": "mg/dL",
+      "range_default": "< 150"
+    },
+    {
+      "canonical_name": "VLDL Cholesterol",
+      "aliases": ["VLDL", "VLDL-C", "Very Low Density Lipoprotein", "VLDL Chol"],
+      "unit": "mg/dL",
+      "range_default": "< 30"
+    },
+
+    {
+      "canonical_name": "TSH",
+      "aliases": [
+        "Thyroid Stimulating Hormone", "Thyrotropin", "TSH (Ultrasensitive)",
+        "Ultrasensitive TSH", "TSH 3rd Generation", "TSH (3rd Generation)"
+      ],
+      "unit": "mIU/L",
+      "range_default": "0.4 - 4.0"
+    },
+    {
+      "canonical_name": "Free T3",
+      "aliases": [
+        "fT3", "FT3", "Free Triiodothyronine", "Free T3 (fT3)",
+        "Tri-iodothyronine Free", "Free Tri-iodothyronine"
+      ],
+      "unit": "pg/mL",
+      "range_default": "2.3 - 4.2"
+    },
+    {
+      "canonical_name": "Free T4",
+      "aliases": [
+        "fT4", "FT4", "Free Thyroxine", "Free T4 (fT4)",
+        "Free Thyroxine (fT4)", "Free Tetraiodothyronine"
+      ],
+      "unit": "ng/dL",
+      "range_default": "0.89 - 1.76"
+    },
+    {
+      "canonical_name": "Total T3",
+      "aliases": ["T3", "Triiodothyronine", "T3 Total", "Total Triiodothyronine", "T3 (Total)"],
+      "unit": "ng/mL",
+      "range_default": "0.8 - 2.0"
+    },
+    {
+      "canonical_name": "Total T4",
+      "aliases": ["T4", "Thyroxine", "T4 Total", "Total Thyroxine", "T4 (Total)"],
+      "unit": "µg/dL",
+      "range_default": "5.1 - 14.1"
+    },
+
+    {
+      "canonical_name": "Sodium",
+      "aliases": ["Na", "Na+", "Serum Sodium", "S. Sodium", "Sodium (Na)"],
+      "unit": "mEq/L",
+      "range_default": "136 - 145"
+    },
+    {
+      "canonical_name": "Potassium",
+      "aliases": ["K", "K+", "Serum Potassium", "S. Potassium", "Potassium (K)"],
+      "unit": "mEq/L",
+      "range_default": "3.5 - 5.1"
+    },
+    {
+      "canonical_name": "Chloride",
+      "aliases": ["Cl", "Cl-", "Serum Chloride", "S. Chloride", "Chloride (Cl)"],
+      "unit": "mEq/L",
+      "range_default": "98 - 107"
+    },
+    {
+      "canonical_name": "Bicarbonate",
+      "aliases": [
+        "HCO3", "HCO3-", "CO2", "Serum CO2", "Serum Bicarbonate",
+        "Total CO2", "TCO2", "Bicarb"
+      ],
+      "unit": "mEq/L",
+      "range_default": "22 - 29"
+    },
+    {
+      "canonical_name": "Calcium",
+      "aliases": ["Ca", "Ca2+", "Serum Calcium", "S. Calcium", "Calcium (Total)"],
+      "unit": "mg/dL",
+      "range_default": "8.5 - 10.2"
+    },
+    {
+      "canonical_name": "Phosphorus",
+      "aliases": ["P", "Serum Phosphorus", "Phosphate", "Inorganic Phosphorus", "Phosphate (Inorganic)"],
+      "unit": "mg/dL",
+      "range_default": "2.5 - 4.5"
+    },
+    {
+      "canonical_name": "Magnesium",
+      "aliases": ["Mg", "Mg2+", "Serum Magnesium", "S. Magnesium", "Magnesium (Serum)"],
+      "unit": "mg/dL",
+      "range_default": "1.7 - 2.4"
+    },
+
+    {
+      "canonical_name": "Vitamin D",
+      "aliases": [
+        "Vit D", "Vitamin D3", "25-OH Vitamin D", "25-Hydroxyvitamin D",
+        "25(OH)D", "Calcidiol", "Vitamin D (25-OH)", "25-OH Vit D", "Vit D3"
+      ],
+      "unit": "ng/mL",
+      "range_default": "30 - 100"
+    },
+    {
+      "canonical_name": "Vitamin B12",
+      "aliases": ["Vit B12", "Cobalamin", "B12", "Cyanocobalamin", "Vitamin B-12"],
+      "unit": "pg/mL",
+      "range_default": "200 - 900"
+    },
+    {
+      "canonical_name": "Serum Iron",
+      "aliases": ["Iron", "Fe", "S. Iron", "Serum Fe", "Iron (Serum)"],
+      "unit": "µg/dL",
+      "range_male": "65 - 177",
+      "range_female": "50 - 170",
+      "range_default": "50 - 177"
+    },
+    {
+      "canonical_name": "TIBC",
+      "aliases": [
+        "Total Iron Binding Capacity", "Transferrin (TIBC)",
+        "Total Iron-Binding Capacity"
+      ],
+      "unit": "µg/dL",
+      "range_default": "250 - 370"
+    },
+    {
+      "canonical_name": "Ferritin",
+      "aliases": ["Serum Ferritin", "S. Ferritin", "Ferritin (Serum)"],
+      "unit": "ng/mL",
+      "range_male": "12 - 300",
+      "range_female": "12 - 150",
+      "range_default": "12 - 300"
+    },
+    {
+      "canonical_name": "CRP",
+      "aliases": [
+        "C-Reactive Protein", "C Reactive Protein", "hs-CRP", "hsCRP",
+        "High Sensitivity CRP", "CRP (hs)", "Highly Sensitive CRP"
+      ],
+      "unit": "mg/L",
+      "range_default": "< 5.0"
+    },
+    {
+      "canonical_name": "ESR",
+      "aliases": [
+        "Erythrocyte Sedimentation Rate", "Westergren ESR",
+        "ESR (Westergren)", "Sed Rate"
+      ],
+      "unit": "mm/hr",
+      "range_male": "0 - 15",
+      "range_female": "0 - 20",
+      "range_default": "0 - 20"
+    }
+
+  ]
+}

@@ -1,0 +1,349 @@
+{
+  "_comment": "Maps brand names, abbreviations, and alternate spellings to their canonical generic name. Lookups are case-insensitive (normalise with .lower() before querying). Indian brand names are listed first, followed by international brands.",
+  "aliases": {
+    "crocin":                 "Paracetamol",
+    "crocin 500":             "Paracetamol",
+    "crocin 650":             "Paracetamol",
+    "calpol":                 "Paracetamol",
+    "dolo":                   "Paracetamol",
+    "dolo 650":               "Paracetamol",
+    "metacin":                "Paracetamol",
+    "p 500":                  "Paracetamol",
+    "acetaminophen":          "Paracetamol",
+    "tylenol":                "Paracetamol",
+    "panadol":                "Paracetamol",
+    "tempra":                 "Paracetamol",
+
+    "brufen":                 "Ibuprofen",
+    "combiflam":              "Ibuprofen",
+    "advil":                  "Ibuprofen",
+    "motrin":                 "Ibuprofen",
+    "nurofen":                "Ibuprofen",
+
+    "voveran":                "Diclofenac",
+    "voltaren":               "Diclofenac",
+    "cataflam":               "Diclofenac",
+    "diclogesic":             "Diclofenac",
+
+    "naprosyn":               "Naproxen",
+    "aleve":                  "Naproxen",
+    "naxen":                  "Naproxen",
+
+    "ecosprin":               "Aspirin",
+    "disprin":                "Aspirin",
+    "aspro":                  "Aspirin",
+    "loprin":                 "Aspirin",
+    "aspirin 81":             "Aspirin",
+    "acetylsalicylic acid":   "Aspirin",
+
+    "warfarin sodium":        "Warfarin",
+    "warfin":                 "Warfarin",
+    "coumadin":               "Warfarin",
+    "warf":                   "Warfarin",
+
+    "plavix":                 "Clopidogrel",
+    "clopivas":               "Clopidogrel",
+    "deplatt":                "Clopidogrel",
+    "clopilet":               "Clopidogrel",
+
+    "lanoxin":                "Digoxin",
+    "digicor":                "Digoxin",
+
+    "cordarone":              "Amiodarone",
+    "tachyra":                "Amiodarone",
+
+    "pan":                    "Pantoprazole",
+    "pantocid":               "Pantoprazole",
+    "pantop":                 "Pantoprazole",
+    "pantopraz":              "Pantoprazole",
+    "protonix":               "Pantoprazole",
+    "nexpro":                 "Pantoprazole",
+
+    "omez":                   "Omeprazole",
+    "ocid":                   "Omeprazole",
+    "prilosec":               "Omeprazole",
+    "losec":                  "Omeprazole",
+
+    "rantac":                 "Ranitidine",
+    "zinetac":                "Ranitidine",
+    "zantac":                 "Ranitidine",
+
+    "augmentin":              "Amoxicillin",
+    "mox":                    "Amoxicillin",
+    "clavam":                 "Amoxicillin",
+    "moxclav":                "Amoxicillin",
+    "amoxil":                 "Amoxicillin",
+
+    "ciprobay":               "Ciprofloxacin",
+    "cifran":                 "Ciprofloxacin",
+    "cipro":                  "Ciprofloxacin",
+    "ciplox":                 "Ciprofloxacin",
+
+    "tavanic":                "Levofloxacin",
+    "levomac":                "Levofloxacin",
+    "levoday":                "Levofloxacin",
+
+    "flagyl":                 "Metronidazole",
+    "metrogyl":               "Metronidazole",
+    "metro":                  "Metronidazole",
+
+    "azee":                   "Azithromycin",
+    "azithral":               "Azithromycin",
+    "zithromax":              "Azithromycin",
+    "azax":                   "Azithromycin",
+
+    "klaricid":               "Clarithromycin",
+    "klacid":                 "Clarithromycin",
+    "claribid":               "Clarithromycin",
+    "biaxin":                 "Clarithromycin",
+
+    "erythrocin":             "Erythromycin",
+    "althrocin":              "Erythromycin",
+    "ery-tab":                "Erythromycin",
+
+    "rifadin":                "Rifampicin",
+    "rimactane":              "Rifampicin",
+    "macox":                  "Rifampicin",
+    "rifampicin":             "Rifampicin",
+    "rifampin":               "Rifampicin",
+    "rifacin":                "Rifampicin",
+
+    "inh":                    "Isoniazid",
+    "nydrazid":               "Isoniazid",
+
+    "bactrim":                "Co-trimoxazole",
+    "septran":                "Co-trimoxazole",
+    "trimethoprim-sulfamethoxazole": "Co-trimoxazole",
+    "tmp-smx":                "Co-trimoxazole",
+    "cotrim":                 "Co-trimoxazole",
+
+    "diflucan":               "Fluconazole",
+    "fluka":                  "Fluconazole",
+
+    "nizoral":                "Ketoconazole",
+
+    "sporanox":               "Itraconazole",
+    "canditral":              "Itraconazole",
+
+    "glycomet":               "Metformin",
+    "glucophage":             "Metformin",
+    "glumet":                 "Metformin",
+    "obimet":                 "Metformin",
+    "riomet":                 "Metformin",
+    "gluformin":              "Metformin",
+
+    "insulin glargine":       "Insulin",
+    "insulin aspart":         "Insulin",
+    "insulin lispro":         "Insulin",
+    "insulin regular":        "Insulin",
+    "lantus":                 "Insulin",
+    "novorapid":              "Insulin",
+    "humalog":                "Insulin",
+    "basalog":                "Insulin",
+    "insulatard":             "Insulin",
+    "huminsulin":             "Insulin",
+
+    "glucotrol":              "Glipizide",
+    "minidiab":               "Glipizide",
+
+    "amaryl":                 "Glimepiride",
+    "glimp":                  "Glimepiride",
+    "glimy":                  "Glimepiride",
+    "zoryl":                  "Glimepiride",
+
+    "lipitor":                "Atorvastatin",
+    "storvas":                "Atorvastatin",
+    "atorlip":                "Atorvastatin",
+    "sortis":                 "Atorvastatin",
+
+    "crestor":                "Rosuvastatin",
+    "rosave":                 "Rosuvastatin",
+    "rosuvas":                "Rosuvastatin",
+    "rosucor":                "Rosuvastatin",
+
+    "zocor":                  "Simvastatin",
+    "simcard":                "Simvastatin",
+
+    "lopid":                  "Gemfibrozil",
+
+    "tricor":                 "Fenofibrate",
+    "lipanthyl":              "Fenofibrate",
+
+    "norvasc":                "Amlodipine",
+    "amlip":                  "Amlodipine",
+    "stamlo":                 "Amlodipine",
+    "amlovas":                "Amlodipine",
+
+    "adalat":                 "Nifedipine",
+    "depin":                  "Nifedipine",
+    "calcigard":              "Nifedipine",
+
+    "calan":                  "Verapamil",
+    "isoptin":                "Verapamil",
+    "verelan":                "Verapamil",
+
+    "dilzem":                 "Diltiazem",
+    "cardizem":               "Diltiazem",
+    "angizem":                "Diltiazem",
+
+    "tenormin":               "Atenolol",
+    "tenolol":                "Atenolol",
+    "aten":                   "Atenolol",
+
+    "lopressor":              "Metoprolol",
+    "metolar":                "Metoprolol",
+    "toprol":                 "Metoprolol",
+    "seloken":                "Metoprolol",
+
+    "inderal":                "Propranolol",
+    "ciplar":                 "Propranolol",
+
+    "zebeta":                 "Bisoprolol",
+    "concor":                 "Bisoprolol",
+    "biselect":               "Bisoprolol",
+
+    "lasix":                  "Furosemide",
+    "frusenex":               "Furosemide",
+    "frusemide":              "Furosemide",
+
+    "aldactone":              "Spironolactone",
+    "practon":                "Spironolactone",
+    "spiromide":              "Spironolactone",
+
+    "zyloric":                "Allopurinol",
+    "zyloprim":               "Allopurinol",
+
+    "dilantin":               "Phenytoin",
+    "eptoin":                 "Phenytoin",
+    "phenytek":               "Phenytoin",
+
+    "tegretol":               "Carbamazepine",
+    "mazetol":                "Carbamazepine",
+    "carbatol":               "Carbamazepine",
+
+    "encorate":               "Valproate",
+    "depakote":               "Valproate",
+    "valparin":               "Valproate",
+    "epilex":                 "Valproate",
+    "sodium valproate":       "Valproate",
+    "valproic acid":          "Valproate",
+
+    "prozac":                 "Fluoxetine",
+    "fludac":                 "Fluoxetine",
+    "sifrol":                 "Fluoxetine",
+    "flunil":                 "Fluoxetine",
+
+    "zoloft":                 "Sertraline",
+    "serlift":                "Sertraline",
+    "daxid":                  "Sertraline",
+    "serenata":               "Sertraline",
+
+    "paxil":                  "Paroxetine",
+    "seroxat":                "Paroxetine",
+    "pexep":                  "Paroxetine",
+
+    "effexor":                "Venlafaxine",
+    "veniz":                  "Venlafaxine",
+    "venlor":                 "Venlafaxine",
+
+    "xanax":                  "Alprazolam",
+    "alprax":                 "Alprazolam",
+    "restyl":                 "Alprazolam",
+
+    "rivotril":               "Clonazepam",
+    "lonazep":                "Clonazepam",
+
+    "valium":                 "Diazepam",
+    "calmpose":               "Diazepam",
+
+    "haldol":                 "Haloperidol",
+    "serenace":               "Haloperidol",
+
+    "eskalith":               "Lithium",
+    "lithobid":               "Lithium",
+    "licab":                  "Lithium",
+    "priadel":                "Lithium",
+    "lithosun":               "Lithium",
+
+    "nardil":                 "Phenelzine",
+    "parnate":                "Tranylcypromine",
+
+    "ultram":                 "Tramadol",
+    "tramazac":               "Tramadol",
+    "contramal":              "Tramadol",
+    "ultracet":               "Tramadol",
+
+    "imuran":                 "Azathioprine",
+    "azoran":                 "Azathioprine",
+
+    "sandimmune":             "Cyclosporine",
+    "panimun":                "Cyclosporine",
+    "ciclosporin":            "Cyclosporine",
+
+    "prograf":                "Tacrolimus",
+    "tacromus":               "Tacrolimus",
+    "tacpan":                 "Tacrolimus",
+
+    "colcrys":                "Colchicine",
+    "colgout":                "Colchicine",
+
+    "nolvadex":               "Tamoxifen",
+    "tamoxifen citrate":      "Tamoxifen",
+
+    "zyvox":                  "Linezolid",
+    "linospan":               "Linezolid",
+
+    "sinemet":                "Levodopa",
+    "levodopa carbidopa":     "Levodopa",
+    "syndopa":                "Levodopa",
+
+    "garamycin":              "Gentamicin",
+    "genticyn":               "Gentamicin",
+
+    "fungizone":              "Amphotericin B",
+
+    "theo-dur":               "Theophylline",
+    "phyllocontin":           "Theophylline",
+    "deriphyllin":            "Theophylline",
+
+    "penegra":                "Sildenafil",
+    "caverta":                "Sildenafil",
+    "suhagra":                "Sildenafil",
+    "viagra":                 "Sildenafil",
+
+    "sorbitrate":             "Isosorbide Mononitrate",
+    "imdur":                  "Isosorbide Mononitrate",
+    "isordil":                "Isosorbide Mononitrate",
+    "ismo":                   "Isosorbide Mononitrate",
+
+    "nitrostat":              "Glyceryl Trinitrate",
+    "nitroglycerin":          "Glyceryl Trinitrate",
+    "nitroglycerine":         "Glyceryl Trinitrate",
+    "angised":                "Glyceryl Trinitrate",
+    "nitrolingual":           "Glyceryl Trinitrate",
+
+    "lisinopril":             "Lisinopril",
+    "zestril":                "Lisinopril",
+    "lipril":                 "Lisinopril",
+    "cardace":                "Ramipril",
+    "ramipril":               "Ramipril",
+    "enalapril":              "Enalapril",
+    "envas":                  "Enalapril",
+    "vasotec":                "Enalapril",
+    "capoten":                "Captopril",
+    "captopril":              "Captopril",
+    "perindopril":            "Perindopril",
+    "coversyl":               "Perindopril",
+
+    "digene":                 "Aluminum Hydroxide",
+    "gelusil":                "Aluminum Hydroxide",
+    "maalox":                 "Aluminum Hydroxide",
+    "antacid":                "Aluminum Hydroxide",
+    "milk of magnesia":       "Magnesium Hydroxide",
+
+    "slow k":                 "Potassium Chloride",
+    "k-lor":                  "Potassium Chloride",
+    "potklor":                "Potassium Chloride",
+    "potassium supplement":   "Potassium Chloride"
+  }
+}

@@ -39,4 +39,4 @@ Thumbs.db
 backend/uploads/
 
 # ─── DrugBank data (large CSV — download separately, see README) ──────────────
-backend/data/
+#backend/data/
