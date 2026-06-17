@@ -902,3 +902,36 @@ git add frontend/public/manifest.json frontend/public/sw.js \
         frontend/components/ServiceWorkerRegistrar.tsx \
         frontend/app/layout.tsx
 git commit -m "feat: PWA — manifest, app-shell service worker, install icons"
+
+# Phase 5A patch (round 3) — download button, mobile UI fixes.
+What was done (Task D — Phase 5A patch):
+
+FIX 1 — Download button (record/[id]/page.tsx)
+
+Added Download icon import and downloading state
+handleDownload(): fetch → blob → createObjectURL → synthetic <a>.click() → revokeObjectURL
+Download button in the "Original Document" CardHeader (icon only on mobile, icon+label on sm+); hidden when file_url is null
+FIX 2 — Mobile nav drawer animation (AppShell.tsx)
+
+Added animate-in slide-in-from-top-2 fade-in-0 duration-150 to the mobile <nav> — the tailwindcss-animate plugin (already installed) drives it
+FIX 3 — Date range filter overflow (timeline/page.tsx)
+
+Date range container: sm:col-span-2 lg:col-span-1 — spans full width at sm breakpoint instead of squeezing into one of two columns
+Inner row: flex-col gap-1.5 sm:flex-row sm:items-center — stacked on mobile, side-by-side at sm where the full-width cell has room; "to" separator hidden on mobile (redundant when stacked)
+TypeScript: passes clean.
+
+Manual test steps:
+
+Download: Open any record with a file — the download button appears in the top-right of the "Original Document" card. Click it; browser should download the file (not open a new tab).
+Mobile nav: At ≤768px, tap the hamburger — the drawer should slide in from the top (vs. instant-appear before).
+Filter overflow: On Timeline at 375px, open filters — the date range row should no longer overflow the card; the two date inputs stack vertically on mobile.
+To commit:
+
+
+git add frontend/app/(patient)/record/[id]/page.tsx \
+        frontend/components/AppShell.tsx \
+        frontend/app/(patient)/timeline/page.tsx \
+        frontend/messages/
+
+# Fix — service worker must never register in development mode.
+ServiceWorkerRegistrar.tsx now guards registration behind process.env.NODE_ENV === "production". The SW will never register during next dev, eliminating the stale-chunk / ChunkLoadError issue. In production (Vercel), the check passes and PWA install/offline behavior works as before.
