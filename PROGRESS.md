@@ -1101,3 +1101,34 @@ frontend/.env.local.example	Full variable list including SARVAM_API_KEY server-s
 frontend/next.config.js	env.NEXT_PUBLIC_BACKEND_URL defaults to localhost:8000 — single source of truth
 frontend/components/UploadZone.tsx	Removed inline ?? "http://localhost:8000" (now from next.config.js)
 frontend/app/clinician/shared/[token]/page.tsx	Same
+
+# Railway Build Error fixes
+Real .venv synced. Here is the manual testing checklist:
+
+Dependency fix applied and clean-room verified. Please run npm run dev and start the backend yourself, then manually test:
+
+a. Sign in — sign in with your existing account, confirm you land on /dashboard with no 401/500 errors in the backend terminal.
+
+b. Load /dashboard — confirm your existing health records appear and no supabase or postgrest errors appear in the backend terminal. The supabase client API changed significantly between 2.4.6 → 2.23.2, so this is the first regression gate.
+
+c. Load /settings — confirm your profile name and account info load correctly, and the language selector shows your saved language (not stuck on English). This is the highest-risk regression point — flag immediately if the profile fails to load or the language reverts to English.
+
+d. Upload one document — upload any PDF. Confirm it appears in the Timeline after processing and the backend logs show a normal OCR → NER → LLM pipeline run with no pydantic validation errors (the Pydantic models jumped from 2.7.1 → 2.13.4, which has some stricter validation behavior).
+
+e. Check /alerts — confirm the existing drug conflict still displays with the correct severity badge and Acknowledge button.
+
+Paste back the backend terminal logs and what you see in the browser before I confirm this is safe to push.
+
+What changed and why:
+
+Package	Before	After	Reason
+supabase	2.4.6	2.23.2	Old version required httpx<0.28, conflicting with google-genai==2.8.0
+postgrest	0.16.10 (explicit)	2.23.2 (supabase-managed)	Was pinned to an old standalone version; now locked to supabase's own sub-dependency
+realtime	implicit	2.23.2 (explicit)	Pinned to match supabase 2.23.2's lockstep versioning
+storage3	implicit	2.23.2 (explicit)	Same
+supabase-auth	implicit	2.23.2 (explicit)	Same
+supabase-functions	implicit	2.23.2 (explicit)	Same
+pydantic	2.7.1	2.13.4	google-genai==2.8.0 requires >=2.9, realtime==2.23.2 requires >=2.11.7
+pydantic-settings	2.3.1	2.14.1	Had an upper cap that didn't support pydantic>=2.8.2
+httpx	0.28.1 (attempted)	0.28.1	Confirmed compatible with supabase 2.23.x; was the original conflict trigger
+To commit: backend/requirements.txt only.
