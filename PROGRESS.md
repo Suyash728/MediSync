@@ -1131,4 +1131,4 @@ supabase-functions	implicit	2.23.2 (explicit)	Same
 pydantic	2.7.1	2.13.4	google-genai==2.8.0 requires >=2.9, realtime==2.23.2 requires >=2.11.7
 pydantic-settings	2.3.1	2.14.1	Had an upper cap that didn't support pydantic>=2.8.2
 httpx	0.28.1 (attempted)	0.28.1	Confirmed compatible with supabase 2.23.x; was the original conflict trigger
-To commit: backend/requirements.txt only.
+To commit: backend/requirements.txt only
