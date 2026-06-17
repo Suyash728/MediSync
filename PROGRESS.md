@@ -935,3 +935,35 @@ git add frontend/app/(patient)/record/[id]/page.tsx \
 
 # Fix — service worker must never register in development mode.
 ServiceWorkerRegistrar.tsx now guards registration behind process.env.NODE_ENV === "production". The SW will never register during next dev, eliminating the stale-chunk / ChunkLoadError issue. In production (Vercel), the check passes and PWA install/offline behavior works as before.
+
+# fix — /settings page: language selector stuck on English, account details not showing up
+Clean. Here is the full picture:
+
+Root cause (found by reading the schema, not guessing)
+The profiles table defined in 001_schema.sql has these columns:
+
+
+id, full_name, date_of_birth, abha_number, phone, created_at
+The settings page SELECTs email and preferred_language — neither column exists. PostgREST returns a 42703 error ("column does not exist"), not PGRST116, so the "row not found" recovery branch is never taken. Execution falls through to setProfileState("error") on every load. That's why you see the error message and why selectedLang stays at its initial "en-IN" value (the setSelectedLang call after the SELECT is never reached).
+
+What was changed
+007_profiles_email_language.sql (new migration)
+
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS email TEXT
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS preferred_language TEXT NOT NULL DEFAULT 'en-IN'
+Back-fills email from auth.users for existing rows
+settings/page.tsx
+
+Added console.log at every decision point in loadProfile and on every render
+Fixed the INSERT fallback: full_name defaults to "Patient" and date_of_birth defaults to "1990-01-01" so the NOT NULL constraints are satisfied
+Please do these three things and paste back what you see:
+
+Apply the migration to your Supabase project — run 007_profiles_email_language.sql in the Supabase SQL editor (Dashboard → SQL Editor → paste the file contents → Run).
+
+Restart the dev server (Ctrl-C → npm run dev).
+
+Open /settings in the browser, then paste back:
+
+The browser console output (F12 → Console tab) — I'm looking for the [settings] lines
+Any backend terminal output if there is any
+I expect you'll see [settings] profiles SELECT raw result: { data: { full_name: "...", email: "...", preferred_language: "en-IN", ... }, error: null } after the migration lands, which means the language selector will show your saved preference and account info will render. I won't claim it's fixed until you paste those logs.

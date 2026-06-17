@@ -77,6 +77,7 @@ export default function SettingsPage() {
   const [deleting,          setDeleting]          = useState(false);
 
   const loadingProfile = profileState === "loading";
+  console.log("[settings] render — profileState:", profileState, "selectedLang:", selectedLang);
 
   // ── Load profile ────────────────────────────────────────────────────────────
 
@@ -86,6 +87,7 @@ export default function SettingsPage() {
 
     // 1. Confirm we have a logged-in user
     const { data: { user } } = await supabase.auth.getUser();
+    console.log("[settings] auth.getUser result:", user?.id ?? "NO USER");
     if (!user) { setProfileState("error"); return; }
 
     // 2. Fetch the profile row
@@ -95,6 +97,8 @@ export default function SettingsPage() {
       .eq("id", user.id)
       .single();
 
+    console.log("[settings] profiles SELECT raw result:", { data, error });
+
     // 3. If the profile row is missing (signup trigger may have failed), insert one now
     if (error?.code === "PGRST116" || !data) {
       const { data: inserted, error: insertError } = await supabase
@@ -102,10 +106,15 @@ export default function SettingsPage() {
         .insert({
           id:         user.id,
           email:      user.email ?? null,
-          full_name:  (user.user_metadata?.full_name as string | undefined) ?? null,
+          // full_name is NOT NULL in the schema — fall back to "Patient" to satisfy constraint
+          full_name:  (user.user_metadata?.full_name as string | undefined) ?? "Patient",
+          // date_of_birth is NOT NULL — use placeholder; user can update it later
+          date_of_birth: (user.user_metadata?.date_of_birth as string | undefined) ?? "1990-01-01",
         })
         .select("full_name, email, date_of_birth, abha_number, preferred_language")
         .single();
+
+      console.log("[settings] profiles INSERT result:", { inserted, insertError });
 
       if (insertError || !inserted) {
         setProfileState("error");
@@ -116,6 +125,7 @@ export default function SettingsPage() {
     }
 
     if (error || !data) {
+      console.log("[settings] falling through to error state. error:", error);
       setProfileState("error");
       return;
     }
@@ -125,6 +135,8 @@ export default function SettingsPage() {
       ...(data as Profile),
       email: (data as Profile).email ?? user.email ?? null,
     };
+    console.log("[settings] merged profile:", merged);
+    console.log("[settings] calling setSelectedLang with:", merged.preferred_language ?? "en-IN");
     setProfile(merged);
     setSelectedLang(merged.preferred_language ?? "en-IN");
     setProfileState("loaded");
