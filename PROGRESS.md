@@ -967,3 +967,137 @@ Open /settings in the browser, then paste back:
 The browser console output (F12 → Console tab) — I'm looking for the [settings] lines
 Any backend terminal output if there is any
 I expect you'll see [settings] profiles SELECT raw result: { data: { full_name: "...", email: "...", preferred_language: "en-IN", ... }, error: null } after the migration lands, which means the language selector will show your saved preference and account info will render. I won't claim it's fixed until you paste those logs.
+
+# Phase 5B: Deployment — Vercel (frontend) + Railway (backend)
+Deployment Checklist — Railway (backend) + Vercel (frontend)
+PRE-FLIGHT (do this before opening either dashboard)
+Step 0 — Apply migration 007 to Supabase
+
+Open https://supabase.com/dashboard → your MediSync project
+Left sidebar → SQL Editor → + New query
+Paste the contents of supabase/migrations/007_profiles_email_language.sql → Run
+Confirm: you see "Success. No rows returned."
+A — RAILWAY (backend)
+Step 1 — Create Railway project
+
+Go to https://railway.app → Login (GitHub recommended)
+Click + New Project → Deploy from GitHub repo
+Select the MediSync repository
+When asked for root directory: type backend → confirm
+Step 2 — Confirm railway.toml is detected
+Railway will detect backend/railway.toml automatically. You should see:
+
+Builder: Nixpacks
+Start command: uvicorn main:app --host 0.0.0.0 --port $PORT
+Health check: /health
+Step 3 — Set environment variables
+In your Railway project → Variables tab → add each of the following:
+
+Variable	Value
+SUPABASE_URL	Your Supabase project URL (e.g. https://abcdefgh.supabase.co)
+SUPABASE_SERVICE_KEY	Your Supabase service_role key (long JWT starting with eyJ)
+SUPABASE_ANON_KEY	Your Supabase anon key
+GROQ_API_KEY	Your Groq key (gsk_...)
+GEMINI_API_KEY	Your Gemini key (AIza...)
+USE_LOCAL_NER	false
+ENVIRONMENT	production
+ALLOWED_ORIGINS	["http://localhost:3000"] (update after Vercel deploys — Step 7)
+Step 4 — Deploy
+Click Deploy. Wait ~3 minutes for the build. When it turns green:
+
+Click the generated domain link (looks like medisync-api-production.up.railway.app)
+Append /health — you should see {"status":"ok","service":"medisync-api"}
+Save this URL — you need it for Vercel.
+B — VERCEL (frontend)
+Step 5 — Import project
+
+Go to https://vercel.com → Login (GitHub)
+Click Add New → Project → select the MediSync repository
+Under Root Directory: click Edit → type frontend → continue
+Framework should auto-detect as Next.js
+Step 6 — Set environment variables
+In the Vercel import screen under Environment Variables, add:
+
+Variable	Value
+NEXT_PUBLIC_SUPABASE_URL	Your Supabase project URL
+NEXT_PUBLIC_SUPABASE_ANON_KEY	Your Supabase anon key
+NEXT_PUBLIC_BACKEND_URL	The Railway URL from Step 4 (e.g. https://medisync-api-production.up.railway.app)
+SARVAM_API_KEY	Your Sarvam AI key (or leave blank to disable TTS)
+Click Deploy. Wait ~2 minutes. When green, your frontend URL appears (e.g. medisync.vercel.app).
+
+C — WIRE UP SUPABASE & CORS
+Step 7 — Add Vercel URL to Railway CORS
+
+In Railway → your project → Variables
+Update ALLOWED_ORIGINS to include both origins: ["https://your-app.vercel.app","http://localhost:3000"]
+Railway auto-redeploys on variable change.
+Step 8 — Add Vercel URL to Supabase Auth
+
+Supabase Dashboard → Authentication → URL Configuration
+Site URL: set to https://your-app.vercel.app
+Redirect URLs: add https://your-app.vercel.app/**
+Save.
+D — SEED DEMO DATA
+Step 9 — Run the seed script
+From your local machine (from the backend/ directory, with .env populated):
+
+
+cd backend
+python scripts/seed_demo.py
+Expected output: 4 health records, 4 medications, 4 lab values (3 abnormal), 1 SEVERE conflict.
+
+E — END-TO-END TEST on deployed URL
+Open https://your-app.vercel.app in a browser and test this sequence:
+
+Step 10a — Basic auth & onboarding
+
+Sign up with a new email → confirm you land on /dashboard
+Step 10b — Upload
+
+Upload any PDF (a real prescription or a test PDF)
+Confirm it appears in the Timeline after processing (~30–60 s)
+Step 10c — Demo account
+
+Sign in as demo@medisync.app / Demo@2026
+Dashboard: should show 4 records, 1 unacknowledged conflict badge
+Timeline: all 4 records in reverse-chronological order; date range filter should not overflow on mobile
+Alerts: Warfarin + Aspirin SEVERE conflict should be visible with red badge; click Acknowledge
+Record detail: open the CBC record; 3 of 4 lab values should appear in amber (abnormal); Download button in "Original Document" card (the demo records have no file, so the button is hidden — this is correct)
+Share: create a share link → open the link in an incognito window → confirm the read-only clinician view loads
+Settings: language selector should show "English" and your name should appear under Account Info
+Step 10d — Language switch
+
+In Settings, switch to हिंदी → Save → confirm page reloads with Hindi labels
+Step 10e — PWA install (production only — service worker is inactive in dev)
+
+On Chrome/Edge desktop: look for the install icon in the address bar → click "Install MediSync"
+On iPhone Safari: tap Share → Add to Home Screen → confirm icon appears on home screen
+On Android Chrome: tap ⋮ menu → Add to Home Screen
+SUMMARY — what to commit
+
+git add \
+  backend/services/ner.py \
+  backend/railway.toml \
+  backend/requirements.txt \
+  backend/.env.example \
+  backend/scripts/__init__.py \
+  backend/scripts/seed_demo.py \
+  frontend/vercel.json \
+  frontend/.env.local.example \
+  frontend/next.config.js \
+  frontend/lib/api.ts \
+  frontend/components/UploadZone.tsx \
+  "frontend/app/clinician/shared/[token]/page.tsx"
+What changed in this phase:
+
+File	Change
+backend/services/ner.py	USE_LOCAL_NER env guard — Railway free tier skips BioBERT, falls back to regex+LLM
+backend/railway.toml	Nixpacks build + uvicorn start command + health check
+backend/requirements.txt	Pinned groq==1.4.0, google-genai==2.8.0 (already httpx==0.28.1)
+backend/.env.example	Full variable list with comments including USE_LOCAL_NER and ALLOWED_ORIGINS
+backend/scripts/seed_demo.py	Idempotent demo seeder — 4 records, 3 abnormal labs, 1 SEVERE drug conflict
+frontend/vercel.json	Framework hint for Vercel import
+frontend/.env.local.example	Full variable list including SARVAM_API_KEY server-side note
+frontend/next.config.js	env.NEXT_PUBLIC_BACKEND_URL defaults to localhost:8000 — single source of truth
+frontend/components/UploadZone.tsx	Removed inline ?? "http://localhost:8000" (now from next.config.js)
+frontend/app/clinician/shared/[token]/page.tsx	Same

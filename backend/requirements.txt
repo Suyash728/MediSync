@@ -24,8 +24,8 @@ torch==2.3.0                  # CPU-only; GPU version optional for production
 huggingface-hub==0.23.4
 
 # ── LLM ───────────────────────────────────────────────────────────────────────
-groq==0.9.0                   # Groq client for llama-3.3-70b-versatile
-google-genai                  # Gemini vision OCR + LLM fallback (new unified SDK)
+groq==1.4.0                   # Groq client for llama-3.3-70b-versatile
+google-genai==2.8.0           # Gemini vision OCR + LLM fallback (new unified SDK)
 
 # ── RAG / embeddings (optional Phase) ────────────────────────────────────────
 sentence-transformers==3.0.1  # all-MiniLM-L6-v2 (384-dim)

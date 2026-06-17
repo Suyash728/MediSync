@@ -175,7 +175,7 @@ export function UploadZone({ onSuccess }: Props) {
     }, 4000);
 
     try {
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000";
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL!;
       const res = await fetch(`${backendUrl}/upload/`, {
         method: "POST",
         // Do NOT set Content-Type — the browser sets it with the multipart boundary

@@ -18,10 +18,17 @@ output dosage or frequency — those come from the regex context search below.
 
 import asyncio
 import logging
+import os
 import re
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+# When USE_LOCAL_NER=false, skip loading BioBERT entirely (Railway free tier:
+# 0.5 GB RAM — the model alone is ~400 MB which leaves nothing for FastAPI).
+# LLM extraction in llm.py handles structured data regardless; BioBERT is a
+# secondary signal that improves accuracy but is not required for the app to work.
+USE_LOCAL_NER: bool = os.getenv("USE_LOCAL_NER", "true").lower() == "true"
 
 # BioBERT NER pipeline — loaded once, then reused across requests.
 # Loading takes ~10 s on first call (downloads ~400 MB from HuggingFace Hub).
@@ -31,6 +38,11 @@ _ner_pipeline = None
 # ── Pipeline loading ──────────────────────────────────────────────────────────
 
 def _get_pipeline():
+    if not USE_LOCAL_NER:
+        # Running in memory-constrained environment (Railway free tier).
+        # Return None so extract_entities() falls through to regex-only mode.
+        return None
+
     global _ner_pipeline
     if _ner_pipeline is None:
         logger.info("Loading BioBERT NER model (~400 MB first time)...")

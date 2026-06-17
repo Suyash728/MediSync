@@ -82,8 +82,7 @@ const RECORD_TYPE_LABELS: Record<RecordType, string> = {
   other:              "Other",
 };
 
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000";
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL!;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
