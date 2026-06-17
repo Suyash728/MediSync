@@ -218,10 +218,10 @@ export default function TimelinePage() {
                 </select>
               </div>
 
-              {/* Date range */}
-              <div className="space-y-1.5">
+              {/* Date range — col-span-2 at sm so two inputs don't overflow a narrow half-width cell */}
+              <div className="space-y-1.5 sm:col-span-2 lg:col-span-1">
                 <Label>{t("date_range")}</Label>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center">
                   <Input
                     type="date"
                     aria-label="From date"
@@ -230,7 +230,7 @@ export default function TimelinePage() {
                     max={dateTo || undefined}
                     className="text-xs"
                   />
-                  <span className="text-muted-foreground text-xs shrink-0">{t("to")}</span>
+                  <span className="text-muted-foreground text-xs shrink-0 hidden sm:inline">{t("to")}</span>
                   <Input
                     type="date"
                     aria-label="To date"

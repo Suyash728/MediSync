@@ -27,7 +27,7 @@ import { useTranslations, useLocale } from "next-intl";
 import {
   ArrowLeft, CalendarDays, Hospital, User,
   Trash2, AlertCircle, FileText, Pill, FlaskConical,
-  Volume2, Pause, Play, Square, Loader2,
+  Volume2, Pause, Play, Square, Loader2, Download,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -259,6 +259,34 @@ export default function RecordDetailPage({
     }
   }
 
+  // ── Download original document ──────────────────────────────────────────────
+
+  const [downloading, setDownloading] = useState(false);
+
+  async function handleDownload() {
+    const record = data?.record;
+    if (!record?.file_url) return;
+    setDownloading(true);
+    try {
+      const res = await fetch(record.file_url);
+      if (!res.ok) throw new Error("Download failed");
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const ext  = record.file_path?.split(".").pop() ?? "pdf";
+      const a    = document.createElement("a");
+      a.href     = url;
+      a.download = `${record.title}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error("Download failed. Please try again.");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   // ── Loading state ───────────────────────────────────────────────────────────
 
   if (loading) {
@@ -400,13 +428,32 @@ export default function RecordDetailPage({
         {/* Document preview */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <FileText className="h-4 w-4 text-primary" aria-hidden="true" />
-              {t("original_doc")}
-            </CardTitle>
-            <CardDescription className="text-xs">
-              {t("uploaded_at", { date: createdDate })}
-            </CardDescription>
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-primary" aria-hidden="true" />
+                  {t("original_doc")}
+                </CardTitle>
+                <CardDescription className="text-xs mt-1">
+                  {t("uploaded_at", { date: createdDate })}
+                </CardDescription>
+              </div>
+              {record.file_url && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleDownload}
+                  disabled={downloading}
+                  aria-label={t("download")}
+                >
+                  {downloading
+                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                    : <Download className="h-3.5 w-3.5" aria-hidden="true" />
+                  }
+                  <span className="ml-1.5 hidden sm:inline">{t("download")}</span>
+                </Button>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             {record.file_url ? (

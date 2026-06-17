@@ -198,6 +198,7 @@
     "pause": "Pause",
     "resume": "Resume",
     "stop": "Stop",
+    "download": "Download",
     "verify_disclaimer": "Always verify extracted data against the original document."
   },
   "record_card": {

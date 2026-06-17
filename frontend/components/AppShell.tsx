@@ -207,7 +207,7 @@ export function AppShell({
       {/* ── Mobile nav drawer ─────────────────────────────────────────────── */}
       {mobileOpen && (
         <nav
-          className="md:hidden border-t bg-background px-4 py-3 space-y-1"
+          className="md:hidden border-t bg-background px-4 py-3 space-y-1 animate-in slide-in-from-top-2 fade-in-0 duration-150"
           aria-label="Mobile navigation"
         >
           {NAV_LINKS.map(({ href, key, icon: Icon }) => {

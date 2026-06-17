@@ -845,3 +845,60 @@ Manual steps to test:
 cd frontend && npm run dev — visit /dashboard, change language in /settings, re-upload a document and confirm the upload form labels, record card badges, and summary language all reflect the selection
 Visit /share and verify the access history section shows translated action labels, expiry, and recipient fields
 Visit /settings and confirm account info shows real data (not "—"), and null fields show "Not provided" in the selected language
+
+# dead backend fix (minor issue):
+What I changed: One file — backend/routers/__init__.py. Added from routers.profile import router as profile and "profile" to __all__. The profile router itself (profile.py) was complete and correct; it was simply never wired into the re-export package that main.py depends on.
+
+Backend starts cleanly, /health returns {"status":"ok","service":"medisync-api"}, and /profile/ is registered in the route table.
+
+# PWA setup — installable on desktop/mobile across Safari, Chrome, Edge.
+What was changed (5 files created/modified):
+
+File	Change
+frontend/public/manifest.json	Web app manifest — name, start_url, display, theme, icons
+frontend/public/icons/icon-192.png	192×192 teal heart on white, generated with PIL
+frontend/public/icons/icon-512.png	512×512 same
+frontend/public/icons/icon-maskable-512.png	512×512 with heart at 56% of canvas (safe zone compliant)
+frontend/public/sw.js	Service worker — cache-first for /icons/ + /_next/static/, network-first for everything else; medical API responses are never cached
+frontend/components/ServiceWorkerRegistrar.tsx	"use client" component that calls navigator.serviceWorker.register once on mount
+frontend/app/layout.tsx	Added 6 PWA meta tags in <head> + <ServiceWorkerRegistrar /> in <body>
+next.config.js: Already clean — withNextIntl(nextConfig) with empty nextConfig passes /public through unmodified. No changes needed.
+
+Manual steps — icon quality:
+
+The icons were generated programmatically from the parametric heart formula. Before the demo, optionally run this in a browser to preview them:
+
+
+cd frontend && python3 -m http.server 9000
+# open http://localhost:9000/public/icons/icon-512.png
+If you want a sharper result, open the heart SVG from lucide (or export it from the app via DevTools), then convert with ImageMagick: convert -background '#0d9488' -flatten icon.svg -resize 512x512 icon-512.png.
+
+Manual steps — testing install prompts:
+
+Chrome / Edge (Desktop):
+
+Open the app over HTTPS (or localhost)
+Look for the install icon (⊕) in the address bar, or open DevTools → Application → Manifest to confirm it loads
+Click install → app opens in standalone window
+Chrome (Android):
+
+Open the app in Chrome
+Tap the three-dot menu → "Add to Home screen"
+The masked icon appears on the home screen
+Safari (iOS):
+
+Open the app in Safari
+Tap the Share button → "Add to Home Screen"
+Title defaults to "MediSync" (from apple-mobile-web-app-title)
+The 192px icon is used (Safari ignores the manifest, reads apple-touch-icon)
+Verify SW is active:
+DevTools → Application → Service Workers → confirm sw.js shows as "Activated and running"
+
+What to commit:
+
+
+git add frontend/public/manifest.json frontend/public/sw.js \
+        frontend/public/icons/ \
+        frontend/components/ServiceWorkerRegistrar.tsx \
+        frontend/app/layout.tsx
+git commit -m "feat: PWA — manifest, app-shell service worker, install icons"
