@@ -5,8 +5,7 @@
 Built for CodeFusion 2026 by **Team Error404**.
 
 🔗 **Live App:** https://medi-sync-livid.vercel.app
-🔗 **Backend API:** https://medisync-production-19e0.up.railway.app
-📦 **Repository:** https://github.com/Suyash728/MediSync
+
 🔑 **Demo login:** `demo@medisync.app` / `Demo@2026`
 
 ---
