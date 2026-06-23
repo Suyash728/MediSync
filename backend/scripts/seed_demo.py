@@ -285,12 +285,12 @@ def seed(patient_id: str) -> None:
     ]).execute()
     print("  ✓ Discharge medications inserted")
 
-    # ── Conflict E: Warfarin + Aspirin (SEVERE) ───────────────────────────────
+    # ── Conflict E: Warfarin + Aspirin (MAJOR) ────────────────────────────────
     supabase.table("drug_conflicts").insert({
         "patient_id":     patient_id,
         "drug_a":         "Warfarin",
         "drug_b":         "Aspirin",
-        "severity":       "severe",
+        "severity":       "major",
         "description": (
             "Concurrent use of Warfarin (anticoagulant) and Aspirin "
             "(antiplatelet) significantly increases the risk of serious or "
@@ -309,7 +309,7 @@ def seed(patient_id: str) -> None:
         "is_acknowledged": False,
         "record_ids":      [rec_warfarin, rec_aspirin],
     }).execute()
-    print("  ✓ Warfarin + Aspirin SEVERE conflict row inserted")
+    print("  ✓ Warfarin + Aspirin MAJOR conflict row inserted")
 
     print()
     print("  Demo data seeded successfully.")

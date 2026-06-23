@@ -91,18 +91,18 @@ Add to home screen on iPhone, Android, or desktop (Chrome/Edge/Safari) for an ap
 
 ```
 ┌─────────────────┐         ┌──────────────────┐         ┌─────────────────┐
-│   Next.js PWA    │ ◄─────► │   FastAPI Backend │ ◄─────► │    Supabase      │
-│  (Vercel, React)  │  REST   │   (Railway)        │         │  Postgres + RLS   │
-│                   │         │                    │         │  Auth + Storage   │
+│   Next.js PWA   │ ◄─────► │   FastAPI Backend│ ◄─────► │    Supabase     │
+│  (Vercel, React)│  REST   │   (Railway)      │         │  Postgres + RLS │
+│                 │         │                  │         │  Auth + Storage │
 └─────────────────┘         └──────────────────┘         └─────────────────┘
                                       │
                   ┌───────────────────┼───────────────────┐
                   ▼                   ▼                   ▼
            ┌─────────────┐   ┌────────────────┐   ┌──────────────┐
-           │  Groq LLM    │   │  Gemini Vision  │   │  Sarvam TTS   │
-           │ (extraction, │   │ (handwritten /   │   │ (audio       │
-           │  summaries,  │   │  scanned docs)   │   │  narration)   │
-           │  conflicts)  │   └────────────────┘   └──────────────┘
+           │  Groq LLM   │   │  Gemini Vision │   │  Sarvam TTS  │
+           │ (extraction │   │ (handwritten / │   │ (audio       │
+           │  summaries, │   │  scanned docs) │   │  narration)  │
+           │  conflicts) │   └────────────────┘   └──────────────┘
            └─────────────┘
 ```
 
