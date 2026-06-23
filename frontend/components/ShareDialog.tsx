@@ -53,6 +53,7 @@ type ScopeMode = "all" | "type" | "record";
 interface ShareDialogProps {
   recordId?:    string;
   recordTitle?: string;
+  recordIds?:   string[];       // pre-selected IDs from multi-select; hides scope selector
   trigger?:     React.ReactNode;
   onCreated?:   () => void;
 }
@@ -62,6 +63,7 @@ interface ShareDialogProps {
 export function ShareDialog({
   recordId,
   recordTitle,
+  recordIds,
   trigger,
   onCreated,
 }: ShareDialogProps) {
@@ -96,8 +98,13 @@ export function ShareDialog({
     if (!session) { setSubmitting(false); return; }
 
     try {
-      // Build scope parameters from the form selection
-      const scopeRecordIds  = scopeMode === "record" && recordId ? [recordId] : null;
+      // Build scope parameters — recordIds prop (multi-select) takes precedence
+      const scopeRecordIds =
+        recordIds && recordIds.length > 0
+          ? recordIds
+          : scopeMode === "record" && recordId
+          ? [recordId]
+          : null;
       const scopeRecordTypes = scopeMode === "type" ? [scopeType] : null;
 
       const { grant, token } = await shareApi.create(
@@ -184,49 +191,62 @@ export function ShareDialog({
                   </p>
                 </div>
 
-                {/* Scope selector */}
-                <div className="space-y-1.5">
-                  <Label>What to share</Label>
-                  <div className="flex flex-wrap gap-2">
-                    {recordId && (
-                      <ScopePill
-                        active={scopeMode === "record"}
-                        onClick={() => setScopeMode("record")}
-                      >
-                        This record only
-                      </ScopePill>
-                    )}
-                    <ScopePill
-                      active={scopeMode === "all"}
-                      onClick={() => setScopeMode("all")}
-                    >
-                      All records
-                    </ScopePill>
-                    <ScopePill
-                      active={scopeMode === "type"}
-                      onClick={() => setScopeMode("type")}
-                    >
-                      By type
-                    </ScopePill>
+                {/* Scope selector — hidden when specific records are pre-selected */}
+                {recordIds && recordIds.length > 0 ? (
+                  <div className="space-y-1.5">
+                    <Label>What to share</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Sharing{" "}
+                      <span className="font-medium text-foreground">
+                        {recordIds.length} selected record{recordIds.length !== 1 ? "s" : ""}
+                      </span>
+                      .
+                    </p>
                   </div>
-
-                  {scopeMode === "type" && (
-                    <div className="mt-2">
-                      <select
-                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        value={scopeType}
-                        onChange={(e) => setScopeType(e.target.value as RecordType)}
-                        aria-label="Select record type to share"
+                ) : (
+                  <div className="space-y-1.5">
+                    <Label>What to share</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {recordId && (
+                        <ScopePill
+                          active={scopeMode === "record"}
+                          onClick={() => setScopeMode("record")}
+                        >
+                          This record only
+                        </ScopePill>
+                      )}
+                      <ScopePill
+                        active={scopeMode === "all"}
+                        onClick={() => setScopeMode("all")}
                       >
-                        {TYPE_SCOPE_OPTIONS.map((opt) => (
-                          <option key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </option>
-                        ))}
-                      </select>
+                        All records
+                      </ScopePill>
+                      <ScopePill
+                        active={scopeMode === "type"}
+                        onClick={() => setScopeMode("type")}
+                      >
+                        By type
+                      </ScopePill>
                     </div>
-                  )}
-                </div>
+
+                    {scopeMode === "type" && (
+                      <div className="mt-2">
+                        <select
+                          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          value={scopeType}
+                          onChange={(e) => setScopeType(e.target.value as RecordType)}
+                          aria-label="Select record type to share"
+                        >
+                          {TYPE_SCOPE_OPTIONS.map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Expiry */}
                 <div className="space-y-1.5">

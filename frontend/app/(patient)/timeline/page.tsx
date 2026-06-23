@@ -20,7 +20,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import {
   Hospital, User, CalendarDays, Search, SlidersHorizontal,
-  FileText, AlertCircle, FileUp,
+  FileText, AlertCircle, FileUp, Share2,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -32,7 +32,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { createClient } from "@/lib/supabase";
 import { api } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import type { RecordType } from "@/lib/types";
+import { ShareDialog } from "@/components/ShareDialog";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -78,6 +80,10 @@ export default function TimelinePage() {
   const [dateFrom,     setDateFrom]     = useState("");
   const [dateTo,       setDateTo]       = useState("");
   const [showFilters,  setShowFilters]  = useState(false);
+
+  // Select-to-share mode
+  const [selectMode,  setSelectMode]  = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // ── Fetch all records ──────────────────────────────────────────────────────
 
@@ -145,10 +151,24 @@ export default function TimelinePage() {
     setDateTo("");
   }
 
+  function toggleRecord(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function exitSelectMode() {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-6">
+    <>
+    <div className={cn("space-y-6", selectMode && selectedIds.size > 0 && "pb-24")}>
 
       {/* ── Header ──────────────────────────────────────────────────────────── */}
       <div className="flex items-start justify-between gap-4">
@@ -156,22 +176,34 @@ export default function TimelinePage() {
           <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
           <p className="text-sm text-muted-foreground mt-1">{t("subtitle")}</p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setShowFilters((s) => !s)}
-          className="shrink-0 flex items-center gap-2"
-          aria-expanded={showFilters}
-          aria-controls="timeline-filters"
-        >
-          <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
-          {t("filters")}
-          {activeFilterCount > 0 && (
-            <Badge variant="default" className="ml-1 h-5 w-5 rounded-full p-0 flex items-center justify-center text-[10px]">
-              {activeFilterCount}
-            </Badge>
-          )}
-        </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Select mode toggle */}
+          <Button
+            variant={selectMode ? "default" : "outline"}
+            size="sm"
+            onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
+            className="shrink-0"
+          >
+            {selectMode ? "Cancel" : "Share records"}
+          </Button>
+          {/* Filters panel toggle */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowFilters((s) => !s)}
+            className="shrink-0 flex items-center gap-2"
+            aria-expanded={showFilters}
+            aria-controls="timeline-filters"
+          >
+            <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
+            {t("filters")}
+            {activeFilterCount > 0 && (
+              <Badge variant="default" className="ml-1 h-5 w-5 rounded-full p-0 flex items-center justify-center text-[10px]">
+                {activeFilterCount}
+              </Badge>
+            )}
+          </Button>
+        </div>
       </div>
 
       {/* ── Search — always visible ──────────────────────────────────────────── */}
@@ -312,17 +344,60 @@ export default function TimelinePage() {
       {!loading && filtered.length > 0 && (
         <div className="space-y-2">
           {filtered.map((record) => (
-            <TimelineItem key={record.id} record={record} />
+            <TimelineItem
+              key={record.id}
+              record={record}
+              selectMode={selectMode}
+              selected={selectedIds.has(record.id)}
+              onToggle={toggleRecord}
+            />
           ))}
         </div>
       )}
     </div>
+
+    {/* ── Sticky action bar (shown when 1+ records selected) ──────────────────── */}
+    {selectMode && selectedIds.size > 0 && (
+      <div className="fixed bottom-0 left-0 right-0 z-50 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 p-4">
+        <div className="container flex items-center justify-between gap-4">
+          <span className="text-sm font-medium text-foreground">
+            {selectedIds.size} record{selectedIds.size !== 1 ? "s" : ""} selected
+          </span>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
+              Clear
+            </Button>
+            <ShareDialog
+              recordIds={Array.from(selectedIds)}
+              trigger={
+                <Button size="sm">
+                  <Share2 className="mr-2 h-4 w-4" aria-hidden="true" />
+                  Share selected →
+                </Button>
+              }
+              onCreated={exitSelectMode}
+            />
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
 
 // ── Timeline item component ────────────────────────────────────────────────────
 
-function TimelineItem({ record }: { record: TimelineRecord }) {
+function TimelineItem({
+  record,
+  selectMode,
+  selected,
+  onToggle,
+}: {
+  record:     TimelineRecord;
+  selectMode: boolean;
+  selected:   boolean;
+  onToggle:   (id: string) => void;
+}) {
   const t     = useTranslations("timeline");
   const tCard = useTranslations("record_card");
 
@@ -347,78 +422,122 @@ function TimelineItem({ record }: { record: TimelineRecord }) {
     ? tCard("processing")
     : record.summary ?? tCard("no_summary");
 
+  const cardContent = (
+    <Card className={cn(
+      "hover:shadow-md transition-shadow cursor-pointer",
+      selected && "ring-2 ring-primary ring-offset-1",
+    )}>
+      <CardContent className="flex items-start gap-4 py-4">
+
+        {/* Checkbox — visible in select mode */}
+        {selectMode && (
+          <div className="flex items-center shrink-0 pt-1">
+            <input
+              type="checkbox"
+              readOnly
+              checked={selected}
+              tabIndex={-1}
+              aria-hidden="true"
+              className="h-4 w-4 rounded border-input accent-primary cursor-pointer"
+            />
+          </div>
+        )}
+
+        {/* Month/year label column — anchors the dot on the timeline */}
+        <div className="shrink-0 w-16 text-right hidden sm:block">
+          {formattedDate ? (
+            <span className="text-xs text-muted-foreground leading-snug">
+              {new Date(record.document_date!).toLocaleDateString("en-IN", {
+                month: "short", year: "numeric",
+              })}
+            </span>
+          ) : (
+            <span className="text-xs text-muted-foreground">—</span>
+          )}
+        </div>
+
+        {/* Divider dot */}
+        <div className="flex flex-col items-center pt-1 shrink-0">
+          <div className="h-2.5 w-2.5 rounded-full bg-primary" aria-hidden="true" />
+          <div className="flex-1 w-px bg-border mt-1" aria-hidden="true" />
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 min-w-0 space-y-1.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-medium text-sm truncate">{record.title}</span>
+            <Badge variant={typeVariant} className="shrink-0 text-xs">
+              {typeLabel}
+            </Badge>
+            {needsReview && (
+              <Badge variant="warning" className="shrink-0 text-xs">
+                {t("needs_review_badge")}
+              </Badge>
+            )}
+          </div>
+
+          {/* Date + facility + doctor all on one horizontal row */}
+          {(formattedDate || record.facility || record.doctor) && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+              {formattedDate && (
+                <span className="flex items-center gap-1">
+                  <CalendarDays className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  {formattedDate}
+                </span>
+              )}
+              {record.facility && (
+                <span className="flex items-center gap-1">
+                  <Hospital className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  {record.facility}
+                </span>
+              )}
+              {record.doctor && (
+                <span className="flex items-center gap-1">
+                  <User className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  {record.doctor}
+                </span>
+              )}
+            </div>
+          )}
+
+          <p className="text-xs text-muted-foreground line-clamp-1">{summaryText}</p>
+        </div>
+
+        {/* Arrow hint — hidden in select mode */}
+        {!selectMode && (
+          <FileText className="h-4 w-4 text-muted-foreground shrink-0 mt-1" aria-hidden="true" />
+        )}
+      </CardContent>
+    </Card>
+  );
+
+  if (selectMode) {
+    return (
+      <div
+        role="checkbox"
+        aria-checked={selected}
+        aria-label={record.title}
+        tabIndex={0}
+        onClick={() => onToggle(record.id)}
+        onKeyDown={(e) => {
+          if (e.key === " " || e.key === "Enter") {
+            e.preventDefault();
+            onToggle(record.id);
+          }
+        }}
+        className="block rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        {cardContent}
+      </div>
+    );
+  }
+
   return (
     <Link
       href={`/record/${record.id}`}
       className="block focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg"
     >
-      <Card className="hover:shadow-md transition-shadow cursor-pointer">
-        <CardContent className="flex items-start gap-4 py-4">
-
-          {/* Month/year label column — anchors the dot on the timeline */}
-          <div className="shrink-0 w-16 text-right hidden sm:block">
-            {formattedDate ? (
-              <span className="text-xs text-muted-foreground leading-snug">
-                {new Date(record.document_date!).toLocaleDateString("en-IN", {
-                  month: "short", year: "numeric",
-                })}
-              </span>
-            ) : (
-              <span className="text-xs text-muted-foreground">—</span>
-            )}
-          </div>
-
-          {/* Divider dot */}
-          <div className="flex flex-col items-center pt-1 shrink-0">
-            <div className="h-2.5 w-2.5 rounded-full bg-primary" aria-hidden="true" />
-            <div className="flex-1 w-px bg-border mt-1" aria-hidden="true" />
-          </div>
-
-          {/* Content */}
-          <div className="flex-1 min-w-0 space-y-1.5">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-medium text-sm truncate">{record.title}</span>
-              <Badge variant={typeVariant} className="shrink-0 text-xs">
-                {typeLabel}
-              </Badge>
-              {needsReview && (
-                <Badge variant="warning" className="shrink-0 text-xs">
-                  {t("needs_review_badge")}
-                </Badge>
-              )}
-            </div>
-
-            {/* Date + facility + doctor all on one horizontal row */}
-            {(formattedDate || record.facility || record.doctor) && (
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
-                {formattedDate && (
-                  <span className="flex items-center gap-1">
-                    <CalendarDays className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                    {formattedDate}
-                  </span>
-                )}
-                {record.facility && (
-                  <span className="flex items-center gap-1">
-                    <Hospital className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                    {record.facility}
-                  </span>
-                )}
-                {record.doctor && (
-                  <span className="flex items-center gap-1">
-                    <User className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                    {record.doctor}
-                  </span>
-                )}
-              </div>
-            )}
-
-            <p className="text-xs text-muted-foreground line-clamp-1">{summaryText}</p>
-          </div>
-
-          {/* Arrow hint */}
-          <FileText className="h-4 w-4 text-muted-foreground shrink-0 mt-1" aria-hidden="true" />
-        </CardContent>
-      </Card>
+      {cardContent}
     </Link>
   );
 }
