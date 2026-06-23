@@ -135,7 +135,6 @@ export default function TimelinePage() {
 
   const activeFilterCount = [
     typeFilter !== "all",
-    !!searchQuery.trim(),
     !!dateFrom || !!dateTo,
   ].filter(Boolean).length;
 
@@ -175,30 +174,28 @@ export default function TimelinePage() {
         </Button>
       </div>
 
-      {/* ── Filter panel ────────────────────────────────────────────────────── */}
+      {/* ── Search — always visible ──────────────────────────────────────────── */}
+      <div className="relative">
+        <Search
+          className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"
+          aria-hidden="true"
+        />
+        <Input
+          id="timeline-search"
+          type="text"
+          placeholder={t("search_placeholder")}
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="pl-9 w-full"
+          aria-label={t("search")}
+        />
+      </div>
+
+      {/* ── Filter panel (type + date range) ────────────────────────────────── */}
       {showFilters && (
         <Card id="timeline-filters">
           <CardContent className="pt-5 pb-5">
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-
-              {/* Text search */}
-              <div className="space-y-1.5 lg:col-span-2">
-                <Label htmlFor="timeline-search">{t("search")}</Label>
-                <div className="relative">
-                  <Search
-                    className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"
-                    aria-hidden="true"
-                  />
-                  <Input
-                    id="timeline-search"
-                    type="text"
-                    placeholder={t("search_placeholder")}
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-9"
-                  />
-                </div>
-              </div>
+            <div className="grid gap-4 sm:grid-cols-2">
 
               {/* Record type */}
               <div className="space-y-1.5">
@@ -218,8 +215,8 @@ export default function TimelinePage() {
                 </select>
               </div>
 
-              {/* Date range — col-span-2 at sm so two inputs don't overflow a narrow half-width cell */}
-              <div className="space-y-1.5 sm:col-span-2 lg:col-span-1">
+              {/* Date range */}
+              <div className="space-y-1.5">
                 <Label>{t("date_range")}</Label>
                 <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center">
                   <Input
@@ -244,7 +241,7 @@ export default function TimelinePage() {
             </div>
 
             {/* Clear filters */}
-            {activeFilterCount > 0 && (
+            {(activeFilterCount > 0 || !!searchQuery.trim()) && (
               <div className="mt-4 flex justify-end">
                 <Button variant="ghost" size="sm" onClick={clearFilters}>
                   {t("clear_filters")}

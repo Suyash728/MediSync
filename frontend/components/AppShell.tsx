@@ -97,15 +97,32 @@ export function AppShell({
     <header className="sticky top-0 z-40 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-16 items-center justify-between">
 
-        {/* ── Logo ─────────────────────────────────────────────────────── */}
-        <Link
-          href="/dashboard"
-          className="flex items-center gap-2 font-semibold text-primary"
-          aria-label="MediSync home"
-        >
-          <Heart className="h-5 w-5 fill-primary" aria-hidden="true" />
-          <span className="text-lg tracking-tight">MediSync</span>
-        </Link>
+        {/* ── Left: hamburger (mobile) + logo ──────────────────────────── */}
+        <div className="flex items-center gap-2">
+          {/* Mobile hamburger — left side per standard mobile convention */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="md:hidden"
+            onClick={() => setMobileOpen((o) => !o)}
+            aria-label={mobileOpen ? "Close menu" : "Open menu"}
+            aria-expanded={mobileOpen}
+          >
+            {mobileOpen
+              ? <X className="h-5 w-5" aria-hidden="true" />
+              : <Menu className="h-5 w-5" aria-hidden="true" />
+            }
+          </Button>
+
+          <Link
+            href="/dashboard"
+            className="flex items-center gap-2 font-semibold text-primary"
+            aria-label="MediSync home"
+          >
+            <Heart className="h-5 w-5 fill-primary" aria-hidden="true" />
+            <span className="text-lg tracking-tight">MediSync</span>
+          </Link>
+        </div>
 
         {/* ── Desktop nav ───────────────────────────────────────────────── */}
         <nav className="hidden md:flex items-center gap-1" aria-label="Main navigation">
@@ -139,10 +156,8 @@ export function AppShell({
           })}
         </nav>
 
-        {/* ── Right side: user menu + mobile toggle ─────────────────────── */}
+        {/* ── Right: user avatar dropdown ───────────────────────────────── */}
         <div className="flex items-center gap-2">
-
-          {/* User avatar dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -186,21 +201,6 @@ export function AppShell({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-
-          {/* Mobile hamburger */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="md:hidden"
-            onClick={() => setMobileOpen((o) => !o)}
-            aria-label={mobileOpen ? "Close menu" : "Open menu"}
-            aria-expanded={mobileOpen}
-          >
-            {mobileOpen
-              ? <X className="h-5 w-5" aria-hidden="true" />
-              : <Menu className="h-5 w-5" aria-hidden="true" />
-            }
-          </Button>
         </div>
       </div>
 

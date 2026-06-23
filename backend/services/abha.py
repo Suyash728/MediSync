@@ -24,4 +24,4 @@ async def verify_abha_number(abha_number: str) -> dict:
     Raises:
         ValueError: If the ABHA number is invalid or unverified.
     """
-    raise NotImplementedError("ABHA verification will be implemented in Phase 5 (optional).")
+    raise NotImplementedError("ABHA Sandbox Integration is not implemented yet.")
