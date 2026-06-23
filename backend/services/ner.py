@@ -376,21 +376,36 @@ def _map_medications(
         if not name or len(name) < 2:
             continue
 
-        # Find the first occurrence of this drug name in the raw text
-        idx = raw_text.lower().find(name.lower())
-        if idx >= 0:
-            # Window: 100 chars before, 200 chars after the mention
-            context = raw_text[max(0, idx - 100) : idx + 200]
-        else:
-            # Couldn't locate the name — may be an OCR artefact
-            context = ""
+        # Find ALL occurrences of this drug name in the raw text.
+        # Using re.finditer instead of str.find so we can scan multiple windows:
+        # a drug mentioned earlier (e.g. in history) with no dosage should not
+        # hide the dosage written next to its active prescription later in the doc.
+        all_matches = list(re.finditer(re.escape(name), raw_text, re.IGNORECASE))
+        found_in_text = bool(all_matches)
+        context = ""
+
+        if all_matches:
+            # Walk every occurrence; stop at the first window that contains a dosage.
+            # Python for/else: the else branch runs only when no break was hit
+            # (i.e., none of the windows yielded a dosage match).
+            for m in all_matches:
+                cand = raw_text[max(0, m.start() - 100) : m.start() + 200]
+                if _first_match(_DOSAGE_RE, cand):
+                    context = cand
+                    break
+            else:
+                # No occurrence yielded a dosage — fall back to first occurrence
+                # window to preserve existing behaviour (frequency/duration may
+                # still be present there).
+                idx0 = all_matches[0].start()
+                context = raw_text[max(0, idx0 - 100) : idx0 + 200]
 
         dosage    = _first_match(_DOSAGE_RE,    context)
         frequency = _first_match(_FREQUENCY_RE, context)
         duration  = _first_match(_DURATION_RE,  context)
 
         # low_confidence: NER model was uncertain OR name absent from raw text
-        low_conf = score < _CONFIDENCE_THRESHOLD or idx < 0
+        low_conf = score < _CONFIDENCE_THRESHOLD or not found_in_text
 
         rows.append({
             "patient_id":      patient_id,

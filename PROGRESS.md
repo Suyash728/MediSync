@@ -1132,3 +1132,23 @@ pydantic	2.7.1	2.13.4	google-genai==2.8.0 requires >=2.9, realtime==2.23.2 requi
 pydantic-settings	2.3.1	2.14.1	Had an upper cap that didn't support pydantic>=2.8.2
 httpx	0.28.1 (attempted)	0.28.1	Confirmed compatible with supabase 2.23.x; was the original conflict trigger
 To commit: backend/requirements.txt only
+
+# LLM Logic Changes
+All three fixes are implemented and verified.
+
+Files changed:
+
+backend/requirements.txt — tenacity==8.2.3 added
+backend/services/ner.py — _map_medications: .find() → re.finditer with per-occurrence dosage scan
+backend/services/reference_lookup.py — compute_is_abnormal: qualitative path added after numeric parse
+backend/services/llm.py — retry predicates, _groq_chat_create_async / _gemini_generate_sync helpers, four call-site updates
+backend/services/tts.py — _sarvam_post_async helper, updated synthesise_async
+Dependency check: clean-room install (/tmp/test_venv) passed with zero conflicts. tenacity==8.2.3 installed into .venv.
+
+Manual tests to run (as specified):
+
+a. Upload a lab report where a result is e.g. Urine Protein: Trace with reference Negative — confirm the record detail page shows an amber row with is_abnormal=true.
+
+b. Upload a prescription where a drug name appears twice in the text (once in history without a dose, once in the active section with 500 mg or similar) — confirm the dosage is captured on the record card.
+
+c. Upload any normal document end-to-end — confirm no speed regression. Then temporarily set GROQ_API_KEY=invalid in .env, restart the backend, and upload — confirm it logs a 401 error, does NOT retry (no ~4 s delay), falls through to Gemini within a second or two, and produces a result. Restore the real key afterwards.

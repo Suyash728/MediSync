@@ -112,7 +112,7 @@ def lookup(test_name: str, sex: Optional[str] = None) -> Optional[tuple[str, str
 def compute_is_abnormal(value_str: str, reference_range: str) -> Optional[bool]:
     """Compare a lab value string against a reference range string.
 
-    Handles these range formats:
+    Numeric formats handled:
       "13.0 - 17.0"      → abnormal if value < 13.0 or > 17.0
       "< 200"            → abnormal if value >= 200
       "<= 5.7"           → abnormal if value > 5.7
@@ -120,62 +120,92 @@ def compute_is_abnormal(value_str: str, reference_range: str) -> Optional[bool]:
       ">= 4.5"           → abnormal if value < 4.5
       "150,000-400,000"  → commas stripped; treated as 150000 - 400000
 
-    Returns True (abnormal), False (normal), or None when the value is not
-    numeric or the units appear mismatched (order-of-magnitude guard).
+    Qualitative formats handled (only reached when value has no numeric token):
+      reference "Negative"/"Absent"/"Nil"/"Clear" + value "Positive"/
+      "Present"/"Detected"/"Seen"/"Trace"/"Reactive" → True (abnormal)
+      reference "Negative"/etc. + value matching a negative term → False (normal)
+
+    Returns True (abnormal), False (normal), or None when undetermined.
+    The numeric path always takes priority — qualitative logic is only reached
+    when value_str contains no parseable numeric token.
     """
-    # Extract the first numeric token from the value string
+    # Extract the first numeric token from the value string.
+    # If one is found, the entire numeric path runs and returns without ever
+    # reaching the qualitative block below.
     num_match = re.search(r"-?[\d,]+\.?\d*", value_str)
-    if not num_match:
-        return None
-    try:
-        num = float(num_match.group().replace(",", ""))
-    except ValueError:
-        return None
+    num: Optional[float] = None
+    if num_match:
+        try:
+            num = float(num_match.group().replace(",", ""))
+        except ValueError:
+            pass    # malformed number — fall through to qualitative
 
-    # Strip commas from range ("150,000 - 400,000" → "150000 - 400000")
-    rng = reference_range.replace(",", "").strip()
+    if num is not None:
+        # ── Numeric path ──────────────────────────────────────────────────────
+        # Strip commas from range ("150,000 - 400,000" → "150000 - 400000")
+        rng = reference_range.replace(",", "").strip()
 
-    # "N - M" or "N – M" (en-dash)
-    m = re.match(r"^([\d.]+)\s*[-–—]\s*([\d.]+)$", rng)
-    if m:
-        low, high = float(m.group(1)), float(m.group(2))
-        if _unit_mismatch(num, low, high):
-            return None
-        return not (low <= num <= high)
+        # "N - M" or "N – M" (en-dash)
+        m = re.match(r"^([\d.]+)\s*[-–—]\s*([\d.]+)$", rng)
+        if m:
+            low, high = float(m.group(1)), float(m.group(2))
+            if _unit_mismatch(num, low, high):
+                return None
+            return not (low <= num <= high)
 
-    # "> N" → abnormal if value <= N
-    m = re.match(r"^>\s*([\d.]+)$", rng)
-    if m:
-        threshold = float(m.group(1))
-        if _unit_mismatch(num, threshold, threshold * 2):
-            return None
-        return num <= threshold
+        # "> N" → abnormal if value <= N
+        m = re.match(r"^>\s*([\d.]+)$", rng)
+        if m:
+            threshold = float(m.group(1))
+            if _unit_mismatch(num, threshold, threshold * 2):
+                return None
+            return num <= threshold
 
-    # ">= N" → abnormal if value < N
-    m = re.match(r"^>=\s*([\d.]+)$", rng)
-    if m:
-        threshold = float(m.group(1))
-        if _unit_mismatch(num, threshold, threshold * 2):
-            return None
-        return num < threshold
+        # ">= N" → abnormal if value < N
+        m = re.match(r"^>=\s*([\d.]+)$", rng)
+        if m:
+            threshold = float(m.group(1))
+            if _unit_mismatch(num, threshold, threshold * 2):
+                return None
+            return num < threshold
 
-    # "< N" → abnormal if value >= N
-    m = re.match(r"^<\s*([\d.]+)$", rng)
-    if m:
-        threshold = float(m.group(1))
-        if _unit_mismatch(num, 0.0, threshold):
-            return None
-        return num >= threshold
+        # "< N" → abnormal if value >= N
+        m = re.match(r"^<\s*([\d.]+)$", rng)
+        if m:
+            threshold = float(m.group(1))
+            if _unit_mismatch(num, 0.0, threshold):
+                return None
+            return num >= threshold
 
-    # "<= N" → abnormal if value > N
-    m = re.match(r"^<=\s*([\d.]+)$", rng)
-    if m:
-        threshold = float(m.group(1))
-        if _unit_mismatch(num, 0.0, threshold):
-            return None
-        return num > threshold
+        # "<= N" → abnormal if value > N
+        m = re.match(r"^<=\s*([\d.]+)$", rng)
+        if m:
+            threshold = float(m.group(1))
+            if _unit_mismatch(num, 0.0, threshold):
+                return None
+            return num > threshold
 
-    return None    # unrecognised range format
+        return None    # numeric value present but range format unrecognised
+
+    # ── Qualitative path ──────────────────────────────────────────────────────
+    # Only reached when value_str contains no parseable numeric token
+    # (e.g. "Trace", "Positive", "Negative", "Reactive").
+    # Never entered for numeric values — numeric path above always returns first.
+    val_lower = value_str.lower().strip()
+    ref_lower = reference_range.lower().strip()
+
+    # Terms that indicate the reference expects a negative/absent result
+    _NEG = frozenset({"negative", "absent", "nil", "clear"})
+    # Terms in the value that indicate a positive/detected finding
+    _POS = frozenset({"positive", "present", "detected", "seen", "trace", "reactive"})
+
+    if any(t in ref_lower for t in _NEG):
+        if any(t in val_lower for t in _POS):
+            return True    # abnormal: reference expects negative, value is positive
+        if any(t in val_lower for t in _NEG):
+            return False   # normal: reference expects negative, value confirms negative
+
+    return None    # unrecognised qualitative format — no guessing
 
 
 def _unit_mismatch(value: float, low: float, high: float) -> bool:

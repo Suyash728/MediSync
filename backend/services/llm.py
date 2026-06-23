@@ -21,6 +21,9 @@ import json
 import logging
 from typing import Optional
 
+import groq as _groq_mod
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
+
 logger = logging.getLogger(__name__)
 
 # Groq model — used for both structured extraction (JSON mode) and summary generation.
@@ -69,6 +72,80 @@ def _get_gemini_client():
         except Exception as exc:
             logger.warning("Gemini client init failed: %s", exc)
     return _gemini_client
+
+
+# ── Retry helpers ─────────────────────────────────────────────────────────────
+#
+# Applied ONLY to the innermost single-call helpers below (_groq_chat_create_async,
+# _gemini_generate_sync).  The orchestrators (extract_structured_async,
+# summarise_record_async) are deliberately NOT retried — wrapping them would
+# multiply delays across the Groq → Gemini → template fallback chain.
+#
+# Budget: stop_after_attempt(2) = 1 initial + 1 retry.
+# Worst-case added latency per tier: ~1–4 s.
+
+def _groq_is_retriable(exc: BaseException) -> bool:
+    """True for transient Groq errors worth retrying.
+
+    Verified against groq==1.4.0:
+    - APITimeoutError is a real top-level name.
+    - APIStatusError instances expose .status_code proxied from the httpx
+      response (502/503/504 all arrive as InternalServerError but carry the
+      actual code via .status_code).
+    - 4xx client errors (400, 401, 403) are NOT retried — bad key or bad
+      request will never succeed on retry; let the fallback chain handle them.
+    """
+    if isinstance(exc, _groq_mod.APITimeoutError):
+        return True
+    if isinstance(exc, _groq_mod.APIStatusError):
+        code = getattr(exc, "status_code", None)
+        return code in (429, 500, 502, 503, 504)
+    return False
+
+
+def _gemini_is_retriable(exc: BaseException) -> bool:
+    """True for transient Gemini errors worth retrying.
+
+    Uses exception class names (defensive) rather than hard imports because the
+    google-genai SDK wraps underlying transport errors and the stable public
+    names differ across minor versions.
+    """
+    transient_names = {"DeadlineExceeded", "ResourceExhausted",
+                       "InternalServerError", "ServiceUnavailable"}
+    if type(exc).__name__ in transient_names:
+        return True
+    # Some SDK versions surface a numeric code via .status_code or .code
+    for attr in ("status_code", "code"):
+        code = getattr(exc, attr, None)
+        if isinstance(code, int) and code in (429, 500, 502, 503, 504):
+            return True
+    return False
+
+
+_GROQ_RETRY = dict(
+    stop=stop_after_attempt(2),
+    wait=wait_exponential(multiplier=1, min=1, max=4),
+    retry=retry_if_exception(_groq_is_retriable),
+    reraise=True,
+)
+_GEMINI_RETRY = dict(
+    stop=stop_after_attempt(2),
+    wait=wait_exponential(multiplier=1, min=1, max=4),
+    retry=retry_if_exception(_gemini_is_retriable),
+    reraise=True,
+)
+
+
+@retry(**_GROQ_RETRY)
+async def _groq_chat_create_async(client, messages: list, **kwargs):
+    """Single Groq chat.completions.create call; retried by tenacity on transient errors."""
+    return await client.chat.completions.create(messages=messages, **kwargs)
+
+
+@retry(**_GEMINI_RETRY)
+def _gemini_generate_sync(client, model: str, contents, config):
+    """Single Gemini generate_content call; retried by tenacity on transient errors."""
+    return client.models.generate_content(model=model, contents=contents, config=config)
 
 
 # ── Structured extraction ─────────────────────────────────────────────────────
@@ -225,12 +302,13 @@ async def _try_groq_extraction_async(prompt: str) -> Optional[str]:
         logger.warning("Groq client unavailable (key not set?).")
         return None
     try:
-        resp = await client.chat.completions.create(
-            model=_GROQ_MODEL,
+        resp = await _groq_chat_create_async(
+            client,
             messages=[
                 {"role": "system", "content": _EXTRACTION_SYSTEM},
                 {"role": "user",   "content": prompt},
             ],
+            model=_GROQ_MODEL,
             temperature=0.1,               # near-deterministic for data extraction
             max_tokens=2000,
             response_format={"type": "json_object"},   # Groq JSON mode — no markdown wrappers
@@ -264,9 +342,10 @@ def _try_gemini_extraction_sync(prompt: str) -> Optional[str]:
             + "\n\n"
             + prompt
         )
-        resp = client.models.generate_content(
-            model=settings.gemini_model,
-            contents=full_prompt,
+        resp = _gemini_generate_sync(
+            client,
+            settings.gemini_model,
+            full_prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
                 temperature=0.1,
@@ -581,12 +660,13 @@ async def _try_groq_summary_async(prompt: str) -> Optional[str]:
     if client is None:
         return None
     try:
-        resp = await client.chat.completions.create(
-            model=_GROQ_MODEL,
+        resp = await _groq_chat_create_async(
+            client,
             messages=[
                 {"role": "system", "content": _SUMMARY_SYSTEM},
                 {"role": "user",   "content": prompt},
             ],
+            model=_GROQ_MODEL,
             temperature=0.2,
             max_tokens=_MAX_SUMMARY_TOKENS,
         )
@@ -608,9 +688,10 @@ def _try_gemini_summary_sync(prompt: str) -> Optional[str]:
         return None
     try:
         from google.genai import types
-        resp = client.models.generate_content(
-            model=settings.gemini_model,
-            contents=_SUMMARY_SYSTEM + "\n\n" + prompt,
+        resp = _gemini_generate_sync(
+            client,
+            settings.gemini_model,
+            _SUMMARY_SYSTEM + "\n\n" + prompt,
             config=types.GenerateContentConfig(
                 temperature=0.2,
                 max_output_tokens=_MAX_SUMMARY_TOKENS,

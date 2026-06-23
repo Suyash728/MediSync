@@ -41,6 +41,7 @@ edge-tts==6.1.10
 pydantic==2.13.4
 pydantic-settings==2.14.1
 httpx==0.28.1                 # >=0.28.1 required by google-genai; supabase 2.23.x is compatible
+tenacity==8.2.3               # Retry transient API errors (Groq/Gemini/Sarvam) with bounded backoff
 python-dotenv==1.0.1
 aiofiles==23.2.1
 
