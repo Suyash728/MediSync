@@ -12,7 +12,7 @@ OCR → BioBERT NER → LLM pipeline is reused as the parsing core; everything e
 
 ## Hackathon context
 
-CodeFusion 2026, Round 3 (implementation). Judges score: technical implementation,
+Judges score: technical implementation,
 innovation, real-world impact, UI/UX & functionality, presentation. They WILL ask us to
 defend the code live. Keep logic readable and commented. No clever one-liners.
 
