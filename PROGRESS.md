@@ -1152,3 +1152,16 @@ a. Upload a lab report where a result is e.g. Urine Protein: Trace with referenc
 b. Upload a prescription where a drug name appears twice in the text (once in history without a dose, once in the active section with 500 mg or similar) — confirm the dosage is captured on the record card.
 
 c. Upload any normal document end-to-end — confirm no speed regression. Then temporarily set GROQ_API_KEY=invalid in .env, restart the backend, and upload — confirm it logs a 401 error, does NOT retry (no ~4 s delay), falls through to Gemini within a second or two, and produces a result. Restore the real key afterwards.
+
+# Here's what changed in backend/services/llm.py:
+
+_INSTRUCTIONS changes:
+
+lab_report (~line 405): Removed "reference range" from the abnormal list requirement. Removed the "based on standard reference range" attribution line (2 lines gone, replaced by clearer "do NOT state the numeric reference range" instruction).
+discharge_summary (~line 433): Lab-value mention clause now says "state only the test name and whether it was abnormal" — explicit ban on numeric values, ranges, and units.
+prescription, imaging, vaccination, other: Each gets a new guard line before the word-limit: "Do not reproduce tables, reference ranges, or structured data verbatim from the raw document text."
+_build_summary_prompt changes:
+
+lab_report lab_header: Now opens with "FOR YOUR INTERNAL REFERENCE ONLY … Do NOT copy these reference ranges … into your written summary."
+discharge_summary lab_header: Same framing — "Do NOT copy these reference ranges or values verbatim … Narrate clinical significance only."
+To test: Start the backend, upload a lab report with an abnormal value (e.g. low Hb). The summary should say "Hemoglobin 9.8 g/dL is LOW" — without stating "13.0–17.0 g/dL" or "based on standard reference range". The structured table below the summary continues to show the full range exactly as before.

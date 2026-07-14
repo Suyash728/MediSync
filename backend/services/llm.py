@@ -392,6 +392,9 @@ _INSTRUCTIONS: dict[str, str] = {
         "- Do NOT include lab values, reference ranges, or laboratory parameter commentary.\n"
         "- Close with exactly this sentence:\n"
         "  \"Drug interactions across the full medication history are checked automatically.\"\n"
+        "- Do not reproduce tables, reference ranges, or structured data verbatim from\n"
+        "  the raw document text — that information is already displayed separately on\n"
+        "  the page. Narrate clinical meaning only.\n"
         "- Maximum 200 words. Clinical tone.\n"
     ),
     "lab_report": (
@@ -400,9 +403,11 @@ _INSTRUCTIONS: dict[str, str] = {
         "- State the document date and facility if present.\n"
         "- For lab values use ONLY the resolved lab data provided below — not the raw text.\n"
         "  - ABNORMAL values lead: list every abnormal value explicitly with test name,\n"
-        "    measured value with units, reference range, and whether it is HIGH or LOW.\n"
-        "  - When the reference range comes from standard guidelines (not the document),\n"
-        "    write \"based on standard reference range\" after citing it.\n"
+        "    measured value with units, and whether it is HIGH or LOW. Do NOT state the\n"
+        "    numeric reference range or mention whether it is a standard or document-\n"
+        "    provided range — that detail is already shown to the patient in a separate\n"
+        "    table on the same page; the summary should narrate the finding, not repeat\n"
+        "    the table.\n"
         "  - If a value has no reference range, do not speculate about its normality.\n"
         "  - If no abnormal values found, state \"No abnormal lab values identified.\"\n"
         "  - Close the lab section with exactly ONE sentence listing parameters within range\n"
@@ -425,8 +430,11 @@ _INSTRUCTIONS: dict[str, str] = {
         "- List procedures performed during the admission, if any.\n"
         "- List medications prescribed at discharge with dosage and frequency.\n"
         "  If none, state \"No medications listed at discharge.\"\n"
-        "- Summarise key clinical findings during the admission. Mention lab values\n"
-        "  only if clinically significant (abnormal or central to the diagnosis).\n"
+        "- Summarise key clinical findings during the admission. If mentioning lab\n"
+        "  values, state only the test name and whether it was abnormal/clinically\n"
+        "  significant — do NOT state the numeric value, reference range, or units.\n"
+        "  That detail is in the lab values table on the same page; narrate why it\n"
+        "  mattered clinically, not what the number was.\n"
         "- State the patient's condition at discharge (e.g. stable, improved, guarded).\n"
         "- Note follow-up instructions, appointment dates, and activity restrictions.\n"
         "- Do not speculate beyond what is stated in the source document.\n"
@@ -443,6 +451,9 @@ _INSTRUCTIONS: dict[str, str] = {
         "- Do NOT mention lab values, blood test results, medications, or diagnoses\n"
         "  from other documents.\n"
         "- Do not speculate beyond what is stated in the imaging report.\n"
+        "- Do not reproduce tables, reference ranges, or structured data verbatim from\n"
+        "  the raw document text — that information is already displayed separately on\n"
+        "  the page. Narrate clinical meaning only.\n"
         "- Maximum 200 words. Clinical tone.\n"
     ),
     "vaccination": (
@@ -454,6 +465,9 @@ _INSTRUCTIONS: dict[str, str] = {
         "- State the administering facility or healthcare provider if present.\n"
         "- Mention the lot or batch number if present.\n"
         "- Do NOT use lab value language, medication dosage language, or reference ranges.\n"
+        "- Do not reproduce tables, reference ranges, or structured data verbatim from\n"
+        "  the raw document text — that information is already displayed separately on\n"
+        "  the page. Narrate clinical meaning only.\n"
         "- Maximum 150 words. Clinical tone.\n"
     ),
     "other": (
@@ -464,6 +478,9 @@ _INSTRUCTIONS: dict[str, str] = {
         "  (diagnoses, medications, findings, recommendations).\n"
         "- Do not assume a specific structure — follow what is actually in the document.\n"
         "- Do not speculate beyond what is present in the source text.\n"
+        "- Do not reproduce tables, reference ranges, or structured data verbatim from\n"
+        "  the raw document text — that information is already displayed separately on\n"
+        "  the page. Narrate clinical meaning only.\n"
         "- Maximum 200 words. Clinical tone.\n"
     ),
 }
@@ -543,13 +560,19 @@ def _build_summary_prompt(
     if record_type in _LAB_BLOCK_TYPES:
         if record_type == "lab_report":
             lab_header = (
-                "\nResolved lab values (reference ranges supplemented from "
-                "WHO/ICMR standards where absent in document):\n"
+                "\nResolved lab values — FOR YOUR INTERNAL REFERENCE ONLY, to determine "
+                "which values are abnormal and in which direction. "
+                "Do NOT copy these reference ranges or source notes into your written "
+                "summary — the patient already sees this exact data in a table on the same "
+                "page. Your job is to narrate the clinical meaning concisely, "
+                "not restate the table:\n"
             )
         else:  # discharge_summary
             lab_header = (
-                "\nLab values from admission "
-                "(context only — secondary to the discharge narrative):\n"
+                "\nLab values from admission — for context only, secondary to the discharge "
+                "narrative. Do NOT copy these reference ranges or values verbatim into your "
+                "summary — the patient already sees this data in a table on the same page. "
+                "Narrate clinical significance only:\n"
             )
         lab_section = lab_header + _format_resolved_labs(resolved_lab_values or [])
     else:
