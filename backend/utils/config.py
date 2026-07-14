@@ -17,8 +17,8 @@ class Settings(BaseSettings):
     groq_api_key: str
     gemini_api_key: str = ""           # Used for vision OCR + LLM fallback
     # Single Gemini model used for both vision OCR and text generation fallback.
-    # Must support multimodal input (vision).  Default: gemini-3.5-flash.
-    gemini_model: str = "gemini-3.5-flash"
+    # Must support multimodal input (vision).  Default: gemini-2.5-flash.
+    gemini_model: str = "gemini-2.5-flash"
 
     # TTS — optional (Phase 5)
     # MedInsight uses Sarvam AI Bulbul:v3 (11 Indian languages).

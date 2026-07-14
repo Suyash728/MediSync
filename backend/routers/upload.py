@@ -45,6 +45,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, Form, status
 from models.schemas import ProcessingStatus, RecordType
 from services import ocr, ner, llm, reference_lookup
 from services import conflict as conflict_svc
+from services import rag as rag_svc
 from utils.auth import get_current_patient
 from utils.db import get_supabase
 from utils.storage import upload_file, ALLOWED_TYPES
@@ -291,6 +292,25 @@ async def upload_document(
                 )
         except Exception as exc:
             logger.error("[%s] Conflict check failed: %s", record_id[:8], exc)
+
+    # ── 11c. RAG — embed and store record chunks ──────────────────────────────
+    # Build natural-language sentences from extracted data and store their
+    # 768-dim embeddings in record_chunks for later /api/chat retrieval.
+    # Non-fatal: a Gemini API error must never block the upload response.
+    if not error_msg:
+        try:
+            record_data = {
+                "medications": medications_rows,
+                "lab_values":  lab_value_rows,
+                "diagnoses":   extracted.get("diagnoses", []) if extracted else [],
+                "summary":     summary,
+            }
+            chunks = rag_svc.build_chunks(record_data)
+            if chunks:
+                await rag_svc.embed_and_store_chunks(record_id, patient_id, chunks)
+                logger.info("[%s] RAG: stored %d chunk(s).", record_id[:8], len(chunks))
+        except Exception as exc:
+            logger.warning("[%s] RAG embedding skipped (non-fatal): %s", record_id[:8], exc)
 
     # ── 12. Write access_log ──────────────────────────────────────────────────
 
