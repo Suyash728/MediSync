@@ -1,5 +1,5 @@
 # Import the function your AI agent just built
-from backend.services.embeddings import embed_documents
+from services.embeddings import embed_documents
 
 # Let's test it with two completely different short strings
 test_strings = ["Patient prescribed Metformin for diabetes.", "Who won the football match?"]
