@@ -160,3 +160,10 @@ Diet/lifestyle/workout advice was explicitly considered and cut — do not add i
 **CLAUDE.md updates:** This file gets a short "Phase N update" append after every
 phase completes, so both agents always have current context without re-reading
 conversation history.
+
+### Phase A1 complete (embedding pipeline)
+`record_chunks` table (768-dim pgvector, RLS-scoped) + `match_record_chunks` RPC landed in
+migration 008. `services/embeddings.py` wraps `gemini-embedding-001` with asymmetric task types
+(RETRIEVAL_DOCUMENT for stored chunks, RETRIEVAL_QUERY for search). Chunking + embedding is wired
+inline into `routers/upload.py` (non-blocking try/except after structured-data persist).
+`scripts/backfill_embeddings.py` handles existing records. RAG retrieval + `/api/chat` (A2) depends on this.
