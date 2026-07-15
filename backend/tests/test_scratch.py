@@ -1,4 +1,9 @@
-# Import the function your AI agent just built
+import sys
+from pathlib import Path
+
+# Allow imports from backend/ regardless of cwd.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from services.embeddings import embed_documents
 
 # Let's test it with two completely different short strings

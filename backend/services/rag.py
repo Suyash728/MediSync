@@ -1,8 +1,7 @@
 """
-RAG service — embedding-on-upload pipeline for MediSync 2.0.
+RAG service — embedding-on-upload pipeline + retrieval for MediSync 2.0.
 
-Two public callables used by the upload pipeline:
-
+Write path (upload pipeline):
   build_chunks(record)
       Converts structured extraction output (medications, lab values, diagnoses,
       summary) into short, natural-language sentences suitable for embedding.
@@ -11,8 +10,18 @@ Two public callables used by the upload pipeline:
       Embeds the chunks via services.embeddings and upserts them into the
       record_chunks table (idempotent: old chunks are deleted first).
 
+Read path (/api/chat endpoint):
+  search_records(user_id, query, k)
+      Embeds the query and calls the match_record_chunks RPC.  RLS scopes
+      results to the caller's rows — no extra filter needed.
+
+  is_relevant(matches)
+      Deterministic refusal gate: returns True only when the top result clears
+      SIMILARITY_FLOOR.  The LLM is never invoked on a False return; this is
+      the "never hallucinate" guarantee.
+
 The match_record_chunks Postgres function (008_record_chunks.sql) does the
-actual cosine-similarity retrieval at query time; we only write here.
+actual cosine-similarity ranking at query time.
 """
 
 import asyncio
@@ -22,6 +31,13 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 _MAX_CHUNK_LEN = 300
+
+# Minimum cosine similarity for a retrieval result to be considered relevant.
+# When the top match falls below this threshold, is_relevant() returns False and
+# the /api/chat endpoint refuses to answer rather than risk hallucinating an
+# answer from unrelated context.  Tune this value against real patient queries;
+# 0.65 is a conservative starting point for 768-dim Gemini embeddings.
+SIMILARITY_FLOOR = 0.60
 
 
 # ── Chunk construction ────────────────────────────────────────────────────────
@@ -159,25 +175,30 @@ async def embed_and_store_chunks(
     logger.info("Stored %d RAG chunk(s) for record %.8s.", len(rows), record_id)
 
 
-# ── Retrieval (used by /api/chat endpoint, Phase 3) ──────────────────────────
+# ── Retrieval (used by /api/chat endpoint) ────────────────────────────────────
 
-async def search_records(patient_id: str, query: str, top_k: int = 5) -> list[dict]:
-    """Semantic search over a patient's records via match_record_chunks RPC.
+async def search_records(user_id: str, query: str, k: int = 5) -> list[dict]:
+    """Semantic search over the caller's records via the match_record_chunks RPC.
 
-    RLS on record_chunks scopes the search to the calling user's rows.
-    match_record_chunks orders by cosine distance (brute-force, exact at our scale).
+    RLS on record_chunks already scopes results to user_id — do NOT add a
+    PostgREST .eq() filter after .rpc().  A filter applied at that layer runs
+    after the SQL function has already ranked and limited rows, so it would
+    silently drop valid results and return fewer than k matches.
 
     Args:
-        patient_id: UUID of the patient (used to build the authed supabase client).
-        query:      Natural-language question string.
-        top_k:      Number of most-relevant chunks to return.
+        user_id: UUID of the authenticated patient (used only for logging;
+                 RLS enforces scoping, not an explicit filter here).
+        query:   Natural-language question string.
+        k:       Number of most-relevant chunks to return (passed to the RPC).
 
     Returns:
-        List of {record_id, content, similarity} dicts ordered closest first.
+        List of {record_id, content, similarity} dicts, ordered closest first.
+        similarity is 1 − cosine_distance, so higher = more relevant.
     """
     from services import embeddings as emb_svc
     from utils.db import get_supabase
 
+    # embed_query is a synchronous network call — offload so we don't stall the loop.
     query_vec: list[float] = await asyncio.to_thread(emb_svc.embed_query, query)
 
     supabase = get_supabase()
@@ -185,8 +206,32 @@ async def search_records(patient_id: str, query: str, top_k: int = 5) -> list[di
         "match_record_chunks",
         {
             "query_embedding": f"[{','.join(str(x) for x in query_vec)}]",
-            "match_count": top_k,
+            "match_count": k,
         },
     ).execute()
 
-    return response.data or []
+    matches: list[dict] = response.data or []
+    logger.debug(
+        "RAG search for user %.8s: %d result(s), top similarity=%.3f",
+        user_id,
+        len(matches),
+        matches[0]["similarity"] if matches else 0.0,
+    )
+    return matches
+
+
+def is_relevant(matches: list[dict]) -> bool:
+    """Return True only when retrieval found something above SIMILARITY_FLOOR.
+
+    This is the deterministic refusal gate for /api/chat: if the top result's
+    cosine similarity does not clear the floor, the patient's question has no
+    grounding in their actual records and we must refuse rather than let the LLM
+    confabulate an answer.  The LLM is never called when this returns False.
+
+    Design note: the check is intentionally simple and stateless — one threshold,
+    one comparison — so it can be audited and tuned without touching LLM logic.
+    """
+    if not matches:
+        return False
+    # matches is ordered by the RPC (closest first); index 0 is the best hit.
+    return float(matches[0].get("similarity", 0.0)) >= SIMILARITY_FLOOR
