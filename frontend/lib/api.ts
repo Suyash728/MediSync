@@ -208,3 +208,20 @@ export const chatApi = {
     );
   },
 };
+
+// ─── Profile-specific helpers ────────────────────────────────────────────────
+
+export const profileApi = {
+  getAccess(authToken?: string): Promise<{
+    is_paid: boolean;
+    trial_ends_at: string | null;
+    has_access: boolean;
+  }> {
+    return api.get<{
+      is_paid: boolean;
+      trial_ends_at: string | null;
+      has_access: boolean;
+    }>("/profile/access/", authToken);
+  },
+};
+

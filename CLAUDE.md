@@ -168,7 +168,6 @@ migration 008. `services/embeddings.py` wraps `gemini-embedding-001` with asymme
 inline into `routers/upload.py` (non-blocking try/except after structured-data persist).
 `scripts/backfill_embeddings.py` handles existing records. RAG retrieval + `/api/chat` (A2) depends on this.
 
-<<<<<<< HEAD
 ### Phase A2 complete (RAG chat)
 `/api/chat` endpoint (`routers/chat.py`) grounded on `record_chunks` via `rag.search_records`.
 Deterministic refusal gate (`rag.is_relevant`, `SIMILARITY_FLOOR=0.58`) blocks LLM calls when no
@@ -176,8 +175,10 @@ chunk clears the threshold — verified empirically against medical vs. adversar
 Groq `openai/gpt-oss-120b` → Gemini `gemini-2.5-flash` fallback via `services/llm_client.py`.
 Sources (`record_id`, `snippet`) returned per API contract. Frontend chat panel (B2) can now wire
 to the real endpoint; the dev bypass in `chat.py` must be replaced with `get_current_patient` before merge.
-=======
-### Phase B1 complete (UI shell)": left sidebar (desktop) + hamburger left-drawer (mobile)
-adopted app-wide, legacy top nav removed. Note the shared nav-link list location so future links go in
-one place.
->>>>>>> frontend-dev
+
+### Phase B1 complete (UI shell)
+Left sidebar (desktop) + hamburger left-drawer (mobile) adopted app-wide, legacy top nav removed. Note the shared nav-link list location so future links go in one place.
+
+### Phase B2 complete (floating chat panel)
+Floating chat panel UI implemented and wired live against backend `/chat/` endpoint (FastAPI RAG). Renders source citations linking to `/record/[record_id]`, formats refusal states in warning style, handles 402 tier gating via a lock placeholder upgrading overlay card, and displays the underlying LLM provider under assistant messages.
+
