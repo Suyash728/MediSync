@@ -168,7 +168,6 @@ migration 008. `services/embeddings.py` wraps `gemini-embedding-001` with asymme
 inline into `routers/upload.py` (non-blocking try/except after structured-data persist).
 `scripts/backfill_embeddings.py` handles existing records. RAG retrieval + `/api/chat` (A2) depends on this.
 
-<<<<<<< HEAD
 ### Phase A2 complete (RAG chat)
 `/api/chat` endpoint (`routers/chat.py`) grounded on `record_chunks` via `rag.search_records`.
 Deterministic refusal gate (`rag.is_relevant`, `SIMILARITY_FLOOR=0.58`) blocks LLM calls when no
@@ -176,8 +175,34 @@ chunk clears the threshold — verified empirically against medical vs. adversar
 Groq `openai/gpt-oss-120b` → Gemini `gemini-2.5-flash` fallback via `services/llm_client.py`.
 Sources (`record_id`, `snippet`) returned per API contract. Frontend chat panel (B2) can now wire
 to the real endpoint; the dev bypass in `chat.py` must be replaced with `get_current_patient` before merge.
-=======
-### Phase B1 complete (UI shell)": left sidebar (desktop) + hamburger left-drawer (mobile)
-adopted app-wide, legacy top nav removed. Note the shared nav-link list location so future links go in
-one place.
->>>>>>> frontend-dev
+
+### Phase B1 complete (UI shell)
+Left sidebar (desktop) + hamburger left-drawer (mobile) adopted app-wide, legacy top nav removed.
+Note the shared nav-link list location so future links go in one place.
+
+### Phase A3 complete (tier gating)
+- `profiles.is_paid` + `trial_ends_at` (migration 009), `has_active_access()` function
+- `require_active_access` FastAPI dependency (402 on paid routes), `GET /me/access` (ungated)
+- Gated: `/api/chat`, share-link creation. Free: upload, timeline, drug-conflict, upload/OCR/NER.
+- 7-day trial auto-granted via `handle_new_user()` trigger on signup (migration 010)
+- Migration 009's column-level UPDATE grant broke PostgREST upserts (42501 on signup);
+  fixed in 011 via table-level GRANT + BEFORE UPDATE trigger (`prevent_tier_self_upgrade`)
+  enforcing `is_paid`/`trial_ends_at` lockdown at the trigger level instead of the grant level
+- Migration 012: `profiles.email` now set from `NEW.email` on signup (was null since 007)
+- Demo: toggle `is_paid` / `trial_ends_at` via service-role only (dashboard or backend)
+
+### SECURITY FIX (16 July 2026): cross-patient data leak in match_record_chunks
+`match_record_chunks` (008) had no ownership filter, relying on RLS which the backend's
+service-role client (`utils/db.py` `get_supabase`) bypasses entirely. Every caller of
+`search_records()` — both `/api/chat` (A2) and `/suggestions/refresh` (A4) — could retrieve
+and act on OTHER patients' record chunks. Confirmed via zero-record throwaway user
+receiving another patient's real lab data.
+
+Fixed in migration 014: `match_record_chunks` now requires `p_user_id` (no default, old
+2-arg signature dropped not overloaded), filters inside the SQL function before
+ranking/limit. `rag.py`'s `search_records()` updated to pass it. Both call sites inherited
+the fix with zero code changes of their own (single shared call site).
+
+Re-verified: zero-record user → `suggestions: []` and chat `refused: true` (previously
+returned another patient's data in both). Demo account's legitimate retrieval confirmed
+unaffected (positive control).

@@ -2,25 +2,24 @@
 POST /chat — RAG-powered chat endpoint.
 
 Flow:
-  1. Auth: resolve patient_id from Bearer token. (TEMPORARILY BYPASSED FOR LOCAL DEV)
+  1. Auth + tier gate: require_active_access verifies the Bearer token and
+     confirms the patient has an active paid plan or trial (HTTP 402 otherwise).
   2. Embed the message and retrieve top-k chunks from record_chunks via RPC.
   3. Deterministic refusal gate (rag.is_relevant): if the best match is below
      SIMILARITY_FLOOR, return a canned refusal WITHOUT calling any LLM.
   4. Build a grounded system prompt + user prompt from the retrieved excerpts.
   5. Call llm_client.complete() — Groq primary, Gemini fallback.
   6. Return the contract shape with sources mapped to {record_id, snippet}.
-
-Tier gating is intentionally absent here — that is Phase A3.
 """
 
 import logging
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel
 
 from services import rag as rag_svc
 from services import llm_client
-# from utils.auth import get_current_patient  <-- Commented out for local dev bypass
+from utils.access import require_active_access
 
 logger = logging.getLogger(__name__)
 
@@ -68,22 +67,18 @@ class ChatResponse(BaseModel):
     "/",
     response_model=ChatResponse,
     status_code=status.HTTP_200_OK,
-    summary="Answer a patient question using their medical records (RAG)",
+    summary="Answer a patient question using their medical records (RAG) [paid]",
 )
 async def chat(
     body: ChatRequest,
-    # patient_id: str = Depends(get_current_patient),  <-- ⚠️ BYPASSED FOR DEV TESTING
+    patient_id: str = Depends(require_active_access),
 ) -> ChatResponse:
     """RAG-powered Q&A over the authenticated patient's own records.
 
+    Gated: requires an active paid plan or trial (HTTP 402 otherwise).
     Returns a refused=True response (no LLM call) when retrieval finds nothing
     above the similarity threshold, guaranteeing grounded answers only.
     """
-    
-    # ── ⚠️ TEMPORARY DEV BYPASS FOR LOCAL TESTING ──────────────────────────────
-    # Using the backfilled demo UUID so you can test instantly via Swagger Docs
-    patient_id = "8c5cf54d-72f5-4a0d-adb4-d06a5fb4706b"
-    # ──────────────────────────────────────────────────────────────────────────
 
     # ── Step 2: Retrieve top-k matching chunks ────────────────────────────────
     # search_records returns a list of dictionaries from Supabase RPC

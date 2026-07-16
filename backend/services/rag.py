@@ -12,20 +12,29 @@ Write path (upload pipeline):
 
 Read path (/api/chat endpoint):
   search_records(user_id, query, k)
-      Embeds the query and calls the match_record_chunks RPC.  RLS scopes
-      results to the caller's rows — no extra filter needed.
+      Embeds the query and calls the match_record_chunks RPC, passing user_id
+      as p_user_id so the RPC's own WHERE clause scopes results.  RLS is NOT
+      in effect here — see search_records() docstring.
 
   is_relevant(matches)
       Deterministic refusal gate: returns True only when the top result clears
       SIMILARITY_FLOOR.  The LLM is never invoked on a False return; this is
       the "never hallucinate" guarantee.
 
-The match_record_chunks Postgres function (008_record_chunks.sql) does the
-actual cosine-similarity ranking at query time.
+  generate_checkup_suggestions(user_id)
+      Retrieves the patient's most salient chunks and asks the LLM for 2–4
+      short follow-up/monitoring suggestions grounded in retrieved facts.
+      Called at the end of the upload pipeline and cached on the profiles row.
+
+The match_record_chunks Postgres function (008_record_chunks.sql, ownership
+scoping fixed in 014_fix_match_record_chunks_scoping.sql) does the cosine-
+similarity ranking AND the ownership filter at query time.
 """
 
 import asyncio
+import json
 import logging
+import re
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -180,14 +189,18 @@ async def embed_and_store_chunks(
 async def search_records(user_id: str, query: str, k: int = 5) -> list[dict]:
     """Semantic search over the caller's records via the match_record_chunks RPC.
 
-    RLS on record_chunks already scopes results to user_id — do NOT add a
-    PostgREST .eq() filter after .rpc().  A filter applied at that layer runs
+    Ownership is enforced by the RPC's own WHERE clause (p_user_id) — NOT by
+    RLS.  The backend always calls this through the service-role client
+    (utils.db.get_supabase), which bypasses Row-Level Security entirely, so
+    user_id must be passed into the RPC explicitly on every call.  Do NOT
+    instead add a PostgREST .eq() filter chained after .rpc(): that runs
     after the SQL function has already ranked and limited rows, so it would
-    silently drop valid results and return fewer than k matches.
+    silently drop valid results (corrupting top-k) while still leaking which
+    other patients' chunks exist.
 
     Args:
-        user_id: UUID of the authenticated patient (used only for logging;
-                 RLS enforces scoping, not an explicit filter here).
+        user_id: UUID of the authenticated patient — passed to the RPC as
+                 p_user_id so results are scoped to this patient only.
         query:   Natural-language question string.
         k:       Number of most-relevant chunks to return (passed to the RPC).
 
@@ -206,6 +219,7 @@ async def search_records(user_id: str, query: str, k: int = 5) -> list[dict]:
         "match_record_chunks",
         {
             "query_embedding": f"[{','.join(str(x) for x in query_vec)}]",
+            "p_user_id": user_id,
             "match_count": k,
         },
     ).execute()
@@ -218,6 +232,112 @@ async def search_records(user_id: str, query: str, k: int = 5) -> list[dict]:
         matches[0]["similarity"] if matches else 0.0,
     )
     return matches
+
+
+async def generate_checkup_suggestions(user_id: str) -> list[dict]:
+    """Generate 2–4 personalised checkup/follow-up suggestions from the patient's records.
+
+    Retrieves the patient's most salient chunks via a broad internal query (k=8),
+    then asks the LLM for short, factual follow-up suggestions grounded strictly in
+    those retrieved facts.  Each suggestion references the source record_id so the
+    frontend can link back to the original document.
+
+    Constraints (enforced via prompt):
+    - No diagnoses, no treatment or medication advice, no diet/lifestyle/workout advice.
+    - Every suggestion is framed as "consider discussing with your doctor".
+    - Grounded only in content from the retrieved record excerpts.
+
+    Returns:
+        List of {"text": str, "based_on_record_id": str | None} dicts.
+        Returns [] when:
+          - the patient has no embedded records yet
+          - retrieval/embedding fails (e.g. Gemini API error)
+          - the LLM call fails
+          - the LLM response cannot be parsed as a valid JSON array
+        Callers must handle [] gracefully; they do not need their own guard.
+    """
+    from services import llm_client
+
+    # ── Retrieve salient chunks ───────────────────────────────────────────────
+    # Broad query surfaces a wide cross-section of the patient's history so
+    # suggestions cover the most clinically relevant items, not just the most
+    # recent upload.
+    _INTERNAL_QUERY = (
+        "recent lab results abnormal values chronic conditions diagnoses follow-up needs monitoring"
+    )
+    try:
+        matches = await search_records(user_id, _INTERNAL_QUERY, k=8)
+    except Exception as exc:
+        logger.warning("generate_checkup_suggestions: retrieval failed: %s", exc)
+        return []
+    if not matches:
+        return []
+
+    # ── Build grounded prompt ─────────────────────────────────────────────────
+    excerpts = "\n".join(
+        f"[{i + 1}] (record_id={m['record_id']}) {m['content']}"
+        for i, m in enumerate(matches)
+    )
+
+    system = (
+        "You are a clinical information assistant. "
+        "Your only job is to identify follow-up or monitoring points from a patient's "
+        "uploaded medical records that they may want to discuss with their doctor. "
+        "You must NOT diagnose, recommend treatments, suggest medications, "
+        "or give dietary, lifestyle, or workout advice. "
+        "Frame every suggestion as 'consider discussing with your doctor'. "
+        "Base each suggestion on a specific fact from the excerpts provided — "
+        "do not invent or infer beyond what is written."
+    )
+
+    prompt = (
+        "Based ONLY on the record excerpts below, write 2–4 short, non-alarming, "
+        "factual follow-up or monitoring suggestions the patient may want to discuss "
+        "with their doctor.\n\n"
+        f"Excerpts:\n{excerpts}\n\n"
+        "Return ONLY a valid JSON array — no prose, no markdown fences. "
+        "Each object must have exactly two keys:\n"
+        "  'text'                 — the suggestion string\n"
+        "  'based_on_record_id'   — the record_id string from the matching excerpt, "
+        "or null if no single record applies\n\n"
+        'Example: [{"text": "Consider discussing your HbA1c trend with your doctor.", '
+        '"based_on_record_id": "uuid-here"}]'
+    )
+
+    # ── LLM call ──────────────────────────────────────────────────────────────
+    try:
+        raw, _ = await llm_client.complete(prompt=prompt, system=system, temperature=0.3)
+    except Exception as exc:
+        logger.warning("generate_checkup_suggestions: LLM call failed: %s", exc)
+        return []
+
+    # ── Parse and validate ────────────────────────────────────────────────────
+    try:
+        text = raw.strip()
+        # Strip any markdown code fences the LLM may have wrapped around the JSON.
+        text = re.sub(r"^```(?:json)?\s*", "", text)
+        text = re.sub(r"\s*```$", "", text)
+        parsed = json.loads(text)
+        if not isinstance(parsed, list):
+            raise ValueError("Expected a JSON array")
+        validated: list[dict] = []
+        for item in parsed:
+            if not isinstance(item, dict):
+                continue
+            suggestion_text = str(item.get("text") or "").strip()
+            if not suggestion_text:
+                continue
+            rid = item.get("based_on_record_id")
+            validated.append({
+                "text": suggestion_text,
+                "based_on_record_id": str(rid) if rid else None,
+            })
+        return validated
+    except Exception as exc:
+        logger.warning(
+            "generate_checkup_suggestions: JSON parse failed (%s): %.200r", exc, raw,
+        )
+        return []
 
 
 def is_relevant(matches: list[dict]) -> bool:
