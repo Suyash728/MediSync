@@ -10,7 +10,7 @@ Security notes:
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import upload, process, records, conflicts, share, abha, profile, chat
+from routers import upload, process, records, conflicts, share, abha, profile, chat, me
 from utils.config import settings
 
 app = FastAPI(
@@ -41,6 +41,7 @@ app.include_router(share,     prefix="/share",     tags=["share"])
 app.include_router(abha,      prefix="/abha",      tags=["abha"])
 app.include_router(profile,   prefix="/profile",   tags=["profile"])
 app.include_router(chat.router, prefix="/chat",    tags=["chat"])
+app.include_router(me.router,   prefix="/me",      tags=["me"])
 
 
 # ── Health check ──────────────────────────────────────────────────────────────

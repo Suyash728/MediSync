@@ -46,6 +46,7 @@ from models.schemas import ProcessingStatus, RecordType
 from services import ocr, ner, llm, reference_lookup
 from services import conflict as conflict_svc
 from services import rag as rag_svc
+from utils.access import check_access
 from utils.auth import get_current_patient
 from utils.db import get_supabase
 from utils.storage import upload_file, ALLOWED_TYPES
@@ -228,16 +229,21 @@ async def upload_document(
     except Exception as exc:
         logger.warning("[%s] Could not fetch preferred_language: %s", record_id[:8], exc)
 
+    # AI summary is a paid feature — skip silently for free/expired accounts.
+    # The upload itself (OCR, NER, conflict detection) is always free.
     if not error_msg:
-        logger.info("[%s] Summary start (lang=%s)", record_id[:8], preferred_language)
-        try:
-            summary = await llm.summarise_record_async(
-                raw_text, extracted, lab_value_rows, record_type, preferred_language,
-            )
-            logger.info("[%s] Summary done", record_id[:8])
-        except Exception as exc:
-            # Non-fatal: record is still saved; patient can re-process later.
-            logger.error("[%s] Summary generation failed: %s", record_id[:8], exc)
+        if check_access(patient_id):
+            logger.info("[%s] Summary start (lang=%s)", record_id[:8], preferred_language)
+            try:
+                summary = await llm.summarise_record_async(
+                    raw_text, extracted, lab_value_rows, record_type, preferred_language,
+                )
+                logger.info("[%s] Summary done", record_id[:8])
+            except Exception as exc:
+                # Non-fatal: record is still saved; patient can re-process later.
+                logger.error("[%s] Summary generation failed: %s", record_id[:8], exc)
+        else:
+            logger.info("[%s] Summary skipped — patient not on active plan", record_id[:8])
 
     # ── 9. Persist extracted rows ─────────────────────────────────────────────
 

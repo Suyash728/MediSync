@@ -19,6 +19,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from models.schemas import ShareGrantCreate
+from utils.access import require_active_access
 from utils.auth import get_current_patient
 from utils.db import get_supabase
 from utils.storage import get_signed_url
@@ -27,10 +28,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.post("/", summary="Create a share grant and return a shareable token")
+@router.post("/", summary="Create a share grant and return a shareable token [paid]")
 async def create_share_grant(
     body: ShareGrantCreate,
-    patient_id: str = Depends(get_current_patient),
+    patient_id: str = Depends(require_active_access),
 ) -> dict:
     """
     Generate a cryptographically random token and persist a share_grants row.
