@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { chatApi, APIError } from "@/lib/api";
+import { useAccess } from "@/lib/AccessContext";
 import { createClient } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 
@@ -38,6 +39,7 @@ const SUGGESTIONS = [
 ];
 
 export function FloatingChat() {
+  const { hasAccess } = useAccess();
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -143,7 +145,11 @@ export function FloatingChat() {
           aria-label="Open AI health assistant chat"
           title="Open AI health assistant"
         >
-          <MessageSquare className="h-6 w-6" aria-hidden="true" />
+          {hasAccess ? (
+            <MessageSquare className="h-6 w-6" aria-hidden="true" />
+          ) : (
+            <Lock className="h-5 w-5 text-teal-200" aria-hidden="true" />
+          )}
         </Button>
       )}
 
@@ -263,7 +269,7 @@ export function FloatingChat() {
             )}
 
             {/* Suggestion Chips (Shown only when initial chat welcome) */}
-            {messages.length === 1 && !isLoading && !isTierGated && (
+            {messages.length === 1 && !isLoading && !isTierGated && hasAccess && (
               <div className="pt-2 space-y-2 max-w-[90%] mr-auto">
                 <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider px-1">
                   Suggested Queries
@@ -289,7 +295,7 @@ export function FloatingChat() {
           </div>
 
           {/* Input Form / Upgrade Billing Gate Overlay */}
-          {isTierGated ? (
+          {isTierGated || !hasAccess ? (
             <div className="p-5 border-t bg-slate-50 dark:bg-slate-900/40 border-t-slate-200 dark:border-t-slate-800 text-center space-y-2.5">
               <div className="mx-auto bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 h-9 w-9 rounded-full flex items-center justify-center">
                 <Lock className="h-4 w-4" />
@@ -299,7 +305,7 @@ export function FloatingChat() {
                   Upgrade to Unlock
                 </h4>
                 <p className="text-[11px] text-muted-foreground leading-normal max-w-xs mx-auto">
-                  Chat assistant is a premium feature. Your 7-day trial has expired. Upgrade your account to search and query your health records.
+                  Chat assistant is a premium feature. Upgrade your account to search and query your health records.
                 </p>
               </div>
               <Button

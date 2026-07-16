@@ -27,6 +27,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createClient } from "@/lib/supabase";
 import { shareApi } from "@/lib/api";
+import { PaidGate } from "@/components/AccessControl";
 import type { RecordType } from "@/lib/types";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -146,9 +147,9 @@ export function ShareDialog({
   }
 
   return (
-    <>
+    <PaidGate featureName="Sharing" fallbackSize="sm">
       {/* Trigger — defaults to a "Share" button */}
-      <span onClick={() => setOpen(true)}>
+      <span onClick={() => setOpen(true)} className="inline-block">
         {trigger ?? (
           <Button variant="outline" size="sm">
             <Share2 className="mr-2 h-4 w-4" aria-hidden="true" />
@@ -337,7 +338,7 @@ export function ShareDialog({
           )}
         </DialogContent>
       </Dialog>
-    </>
+    </PaidGate>
   );
 }
 

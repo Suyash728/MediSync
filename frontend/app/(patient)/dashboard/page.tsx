@@ -18,7 +18,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import {
   FileText, Pill, TriangleAlert,
-  Loader2, FileUp, AlertCircle, ChevronRight,
+  Loader2, FileUp, AlertCircle, ChevronRight, Sparkles,
 } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
@@ -29,6 +29,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { UploadZone } from "@/components/UploadZone";
 import { RecordCard } from "@/components/RecordCard";
 import { WelcomeModal } from "@/components/WelcomeModal";
+import { PaidGate } from "@/components/AccessControl";
 import { createClient } from "@/lib/supabase";
 import { api } from "@/lib/api";
 import type { RecordType, ConflictSeverity } from "@/lib/types";
@@ -284,6 +285,37 @@ export default function DashboardPage() {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
+
+      {/* ── Checkup Suggestions Area (Premium Feature) ────────────────────────── */}
+      <div className="space-y-3">
+        <h2 className="text-base font-semibold tracking-tight flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-primary" aria-hidden="true" />
+          AI Checkup Suggestions
+        </h2>
+        <PaidGate featureName="Checkup Suggestions">
+          <Card>
+            <CardContent className="pt-6 space-y-4">
+              <p className="text-sm text-slate-650 dark:text-slate-350 leading-relaxed">
+                Based on your uploaded medical records, prescriptions, and lab reports, here are suggestions for upcoming doctor follow-ups and diagnostic checkups:
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="p-3 border rounded-lg bg-slate-50 dark:bg-slate-900/50 space-y-1">
+                  <span className="text-xs font-bold text-teal-600 dark:text-teal-400">Cardiology Review</span>
+                  <p className="text-xs text-muted-foreground leading-normal">
+                    Due for a follow-up ECG in 2 months based on your last discharge report.
+                  </p>
+                </div>
+                <div className="p-3 border rounded-lg bg-slate-50 dark:bg-slate-900/50 space-y-1">
+                  <span className="text-xs font-bold text-teal-600 dark:text-teal-400">Lipid Profile Test</span>
+                  <p className="text-xs text-muted-foreground leading-normal">
+                    Recommended screening in 3 weeks to monitor response to statin therapy.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </PaidGate>
+      </div>
 
       {/* ── Upload zone ───────────────────────────────────────────────────────── */}
       <div id="upload-zone">
