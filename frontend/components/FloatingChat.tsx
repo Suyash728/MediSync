@@ -9,11 +9,11 @@ import {
   AlertTriangle,
   ArrowUpRight,
   Sparkles,
-  RefreshCw,
+  Lock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { chatApi } from "@/lib/api";
+import { Card } from "@/components/ui/card";
+import { chatApi, APIError } from "@/lib/api";
 import { createClient } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 
@@ -28,6 +28,7 @@ interface Message {
   text: string;
   refused?: boolean;
   sources?: ChatSource[];
+  provider?: string;
 }
 
 const SUGGESTIONS = [
@@ -40,6 +41,7 @@ export function FloatingChat() {
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isTierGated, setIsTierGated] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "welcome",
@@ -96,7 +98,7 @@ export function FloatingChat() {
       const { data } = await supabase.auth.getSession();
       const token = data.session?.access_token;
 
-      // Invoke the consolidated Chat API helper (mocked for now)
+      // Invoke the consolidated Chat API helper (points to live /chat/ route)
       const res = await chatApi.send(textToSend, null, token);
 
       const assistantMessage: Message = {
@@ -105,16 +107,22 @@ export function FloatingChat() {
         text: res.answer,
         refused: res.refused,
         sources: res.sources,
+        provider: res.provider,
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (err) {
-      const errorMessage: Message = {
-        id: `error-${Date.now()}`,
-        sender: "assistant",
-        text: "I'm sorry, I encountered an error while trying to fetch details from your records. Please try again in a moment.",
-      };
-      setMessages((prev) => [...prev, errorMessage]);
+      if (err instanceof APIError && err.status === 402) {
+        // Handle 402: Trigger the payment / plan upgrade gating state in the panel
+        setIsTierGated(true);
+      } else {
+        const errorMessage: Message = {
+          id: `error-${Date.now()}`,
+          sender: "assistant",
+          text: "I'm sorry, I encountered an error while trying to fetch details from your records. Please try again in a moment.",
+        };
+        setMessages((prev) => [...prev, errorMessage]);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -234,6 +242,13 @@ export function FloatingChat() {
                       </div>
                     )}
                   </div>
+
+                  {/* Engine Provider Tag (supports resilience story) */}
+                  {!isUser && message.provider && (
+                    <span className="text-[9px] text-muted-foreground/80 font-mono px-1">
+                      Answered by {message.provider === "groq" ? "Groq" : message.provider === "gemini" ? "Gemini" : message.provider}
+                    </span>
+                  )}
                 </div>
               );
             })}
@@ -247,8 +262,8 @@ export function FloatingChat() {
               </div>
             )}
 
-            {/* Suggestion Chips (Shown only when initial chat welcome or user clears/starts) */}
-            {messages.length === 1 && !isLoading && (
+            {/* Suggestion Chips (Shown only when initial chat welcome) */}
+            {messages.length === 1 && !isLoading && !isTierGated && (
               <div className="pt-2 space-y-2 max-w-[90%] mr-auto">
                 <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider px-1">
                   Suggested Queries
@@ -273,31 +288,56 @@ export function FloatingChat() {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Input Box Form */}
-          <form
-            onSubmit={handleFormSubmit}
-            className="p-3 border-t bg-background flex items-center gap-2"
-          >
-            <input
-              ref={inputRef}
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask about medications, labs..."
-              className="flex-1 h-9 rounded-md border border-input bg-transparent px-3 py-1 text-xs shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={isLoading}
-              aria-label="Type your message"
-            />
-            <Button
-              type="submit"
-              size="icon"
-              className="h-9 w-9 bg-primary text-primary-foreground hover:bg-primary/90 shrink-0"
-              disabled={!input.trim() || isLoading}
-              aria-label="Send message"
+          {/* Input Form / Upgrade Billing Gate Overlay */}
+          {isTierGated ? (
+            <div className="p-5 border-t bg-slate-50 dark:bg-slate-900/40 border-t-slate-200 dark:border-t-slate-800 text-center space-y-2.5">
+              <div className="mx-auto bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 h-9 w-9 rounded-full flex items-center justify-center">
+                <Lock className="h-4 w-4" />
+              </div>
+              <div className="space-y-1">
+                <h4 className="font-semibold text-xs text-slate-800 dark:text-slate-200">
+                  Upgrade to Unlock
+                </h4>
+                <p className="text-[11px] text-muted-foreground leading-normal max-w-xs mx-auto">
+                  Chat assistant is a premium feature. Your 7-day trial has expired. Upgrade your account to search and query your health records.
+                </p>
+              </div>
+              <Button
+                className="w-full bg-primary hover:bg-primary/90 text-primary-foreground text-[11px] h-8 rounded-md"
+                onClick={() => {
+                  setIsOpen(false);
+                  window.location.href = "/settings";
+                }}
+              >
+                View Premium Plans
+              </Button>
+            </div>
+          ) : (
+            <form
+              onSubmit={handleFormSubmit}
+              className="p-3 border-t bg-background flex items-center gap-2"
             >
-              <Send className="h-4 w-4" aria-hidden="true" />
-            </Button>
-          </form>
+              <input
+                ref={inputRef}
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="Ask about medications, labs..."
+                className="flex-1 h-9 rounded-md border border-input bg-transparent px-3 py-1 text-xs shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={isLoading}
+                aria-label="Type your message"
+              />
+              <Button
+                type="submit"
+                size="icon"
+                className="h-9 w-9 bg-primary text-primary-foreground hover:bg-primary/90 shrink-0"
+                disabled={!input.trim() || isLoading}
+                aria-label="Send message"
+              >
+                <Send className="h-4 w-4" aria-hidden="true" />
+              </Button>
+            </form>
+          )}
         </Card>
       )}
     </>

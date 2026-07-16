@@ -201,14 +201,10 @@ export const chatApi = {
     conversationId: string | null,
     authToken?: string
   ): Promise<ChatResponse> {
-    // Call the local mock chat helper
-    return mockChatApi.send(message, conversationId, authToken);
-
-    // Swap to this when wiring to the live FastAPI backend:
-    // return api.post<ChatResponse>(
-    //   "/chat",
-    //   { message, conversation_id: conversationId },
-    //   authToken
-    // );
+    return api.post<ChatResponse>(
+      "/chat/",
+      { message, conversation_id: conversationId },
+      authToken
+    );
   },
 };
