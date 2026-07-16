@@ -10,7 +10,8 @@
  */
 
 import { redirect } from "next/navigation";
-import { AppShell } from "@/components/AppShell";
+import { SidebarNav } from "@/components/SidebarNav";
+import { FloatingChat } from "@/components/FloatingChat";
 import { createServerSupabaseClient } from "@/lib/supabase";
 
 export default async function PatientLayout({
@@ -42,11 +43,14 @@ export default async function PatientLayout({
     .slice(0, 2);
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50">
-      <AppShell userName={fullName} userInitials={initials} />
-      <main className="flex-1 container py-8">
-        {children}
-      </main>
+    <div className="min-h-screen flex flex-col lg:flex-row bg-slate-50">
+      <SidebarNav userName={fullName} userInitials={initials} />
+      <div className="flex-1 lg:pl-60 flex flex-col min-h-screen">
+        <main className="flex-1 container py-8">
+          {children}
+        </main>
+        <FloatingChat />
+      </div>
     </div>
   );
 }
