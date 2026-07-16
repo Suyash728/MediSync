@@ -37,7 +37,7 @@ _MAX_CHUNK_LEN = 300
 # the /api/chat endpoint refuses to answer rather than risk hallucinating an
 # answer from unrelated context.  Tune this value against real patient queries;
 # 0.65 is a conservative starting point for 768-dim Gemini embeddings.
-SIMILARITY_FLOOR = 0.60
+SIMILARITY_FLOOR = 0.58
 
 
 # ── Chunk construction ────────────────────────────────────────────────────────
