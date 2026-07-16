@@ -190,3 +190,19 @@ Note the shared nav-link list location so future links go in one place.
   enforcing `is_paid`/`trial_ends_at` lockdown at the trigger level instead of the grant level
 - Migration 012: `profiles.email` now set from `NEW.email` on signup (was null since 007)
 - Demo: toggle `is_paid` / `trial_ends_at` via service-role only (dashboard or backend)
+
+### SECURITY FIX (16 July 2026): cross-patient data leak in match_record_chunks
+`match_record_chunks` (008) had no ownership filter, relying on RLS which the backend's
+service-role client (`utils/db.py` `get_supabase`) bypasses entirely. Every caller of
+`search_records()` — both `/api/chat` (A2) and `/suggestions/refresh` (A4) — could retrieve
+and act on OTHER patients' record chunks. Confirmed via zero-record throwaway user
+receiving another patient's real lab data.
+
+Fixed in migration 014: `match_record_chunks` now requires `p_user_id` (no default, old
+2-arg signature dropped not overloaded), filters inside the SQL function before
+ranking/limit. `rag.py`'s `search_records()` updated to pass it. Both call sites inherited
+the fix with zero code changes of their own (single shared call site).
+
+Re-verified: zero-record user → `suggestions: []` and chat `refused: true` (previously
+returned another patient's data in both). Demo account's legitimate retrieval confirmed
+unaffected (positive control).
