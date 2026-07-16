@@ -12,6 +12,8 @@
 import { redirect } from "next/navigation";
 import { SidebarNav } from "@/components/SidebarNav";
 import { FloatingChat } from "@/components/FloatingChat";
+import { AccessProvider } from "@/lib/AccessContext";
+import { TrialBanner } from "@/components/AccessControl";
 import { createServerSupabaseClient } from "@/lib/supabase";
 
 export default async function PatientLayout({
@@ -43,14 +45,17 @@ export default async function PatientLayout({
     .slice(0, 2);
 
   return (
-    <div className="min-h-screen flex flex-col lg:flex-row bg-slate-50">
-      <SidebarNav userName={fullName} userInitials={initials} />
-      <div className="flex-1 lg:pl-60 flex flex-col min-h-screen">
-        <main className="flex-1 container py-8">
-          {children}
-        </main>
-        <FloatingChat />
+    <AccessProvider>
+      <div className="min-h-screen flex flex-col lg:flex-row bg-slate-50">
+        <SidebarNav userName={fullName} userInitials={initials} />
+        <div className="flex-1 lg:pl-60 flex flex-col min-h-screen">
+          <TrialBanner />
+          <main className="flex-1 container py-8">
+            {children}
+          </main>
+          <FloatingChat />
+        </div>
       </div>
-    </div>
+    </AccessProvider>
   );
 }

@@ -201,14 +201,27 @@ export const chatApi = {
     conversationId: string | null,
     authToken?: string
   ): Promise<ChatResponse> {
-    // Call the local mock chat helper
-    return mockChatApi.send(message, conversationId, authToken);
-
-    // Swap to this when wiring to the live FastAPI backend:
-    // return api.post<ChatResponse>(
-    //   "/chat",
-    //   { message, conversation_id: conversationId },
-    //   authToken
-    // );
+    return api.post<ChatResponse>(
+      "/chat/",
+      { message, conversation_id: conversationId },
+      authToken
+    );
   },
 };
+
+// ─── Profile-specific helpers ────────────────────────────────────────────────
+
+export const profileApi = {
+  getAccess(authToken?: string): Promise<{
+    is_paid: boolean;
+    trial_ends_at: string | null;
+    has_access: boolean;
+  }> {
+    return api.get<{
+      is_paid: boolean;
+      trial_ends_at: string | null;
+      has_access: boolean;
+    }>("/profile/access/", authToken);
+  },
+};
+

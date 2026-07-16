@@ -43,6 +43,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { ShareDialog } from "@/components/ShareDialog";
+import { PaidGate } from "@/components/AccessControl";
 import { createClient } from "@/lib/supabase";
 import { api, APIError } from "@/lib/api";
 import type { RecordType } from "@/lib/types";
@@ -493,87 +494,91 @@ export default function RecordDetailPage({
               <CardDescription className="text-xs">{t("summary_source")}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              {record.summary ? (
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  {record.summary}
-                </p>
-              ) : isPending ? (
-                <div className="space-y-2">
-                  <Skeleton className="h-4 w-full" />
-                  <Skeleton className="h-4 w-5/6" />
-                  <Skeleton className="h-4 w-4/6" />
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground italic">
-                  {t("no_summary")}
-                </p>
-              )}
+              <PaidGate featureName="Clinical Summary">
+                {record.summary ? (
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    {record.summary}
+                  </p>
+                ) : isPending ? (
+                  <div className="space-y-2">
+                    <Skeleton className="h-4 w-full" />
+                    <Skeleton className="h-4 w-5/6" />
+                    <Skeleton className="h-4 w-4/6" />
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground italic">
+                    {t("no_summary")}
+                  </p>
+                )}
+              </PaidGate>
 
               {/* TTS Listen button — shown only when summary exists and not clinician view */}
               {record.summary && (
-                <div className="flex items-center gap-2 pt-1">
-                  {ttsState === "idle" && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => void handleTts()}
-                      className="h-8 text-xs gap-1.5"
-                    >
-                      <Volume2 className="h-3.5 w-3.5" aria-hidden="true" />
-                      {t("listen")}
-                    </Button>
-                  )}
-                  {ttsState === "loading" && (
-                    <Button variant="outline" size="sm" disabled className="h-8 text-xs gap-1.5">
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
-                      {t("generating_audio")}
-                    </Button>
-                  )}
-                  {ttsState === "playing" && (
-                    <>
+                <PaidGate featureName="Text-to-Speech playback" fallbackSize="sm">
+                  <div className="flex items-center gap-2 pt-1">
+                    {ttsState === "idle" && (
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => void handleTts()}
                         className="h-8 text-xs gap-1.5"
                       >
-                        <Pause className="h-3.5 w-3.5" aria-hidden="true" />
-                        {t("pause")}
+                        <Volume2 className="h-3.5 w-3.5" aria-hidden="true" />
+                        {t("listen")}
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={handleTtsStop}
-                        className="h-8 text-xs gap-1.5 text-muted-foreground"
-                      >
-                        <Square className="h-3.5 w-3.5" aria-hidden="true" />
-                        {t("stop")}
+                    )}
+                    {ttsState === "loading" && (
+                      <Button variant="outline" size="sm" disabled className="h-8 text-xs gap-1.5">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                        {t("generating_audio")}
                       </Button>
-                    </>
-                  )}
-                  {ttsState === "paused" && (
-                    <>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => void handleTts()}
-                        className="h-8 text-xs gap-1.5"
-                      >
-                        <Play className="h-3.5 w-3.5" aria-hidden="true" />
-                        {t("resume")}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={handleTtsStop}
-                        className="h-8 text-xs gap-1.5 text-muted-foreground"
-                      >
-                        <Square className="h-3.5 w-3.5" aria-hidden="true" />
-                        {t("stop")}
-                      </Button>
-                    </>
-                  )}
-                </div>
+                    )}
+                    {ttsState === "playing" && (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void handleTts()}
+                          className="h-8 text-xs gap-1.5"
+                        >
+                          <Pause className="h-3.5 w-3.5" aria-hidden="true" />
+                          {t("pause")}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={handleTtsStop}
+                          className="h-8 text-xs gap-1.5 text-muted-foreground"
+                        >
+                          <Square className="h-3.5 w-3.5" aria-hidden="true" />
+                          {t("stop")}
+                        </Button>
+                      </>
+                    )}
+                    {ttsState === "paused" && (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void handleTts()}
+                          className="h-8 text-xs gap-1.5"
+                        >
+                          <Play className="h-3.5 w-3.5" aria-hidden="true" />
+                          {t("resume")}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={handleTtsStop}
+                          className="h-8 text-xs gap-1.5 text-muted-foreground"
+                        >
+                          <Square className="h-3.5 w-3.5" aria-hidden="true" />
+                          {t("stop")}
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </PaidGate>
               )}
             </CardContent>
           </Card>
