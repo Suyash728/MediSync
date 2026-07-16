@@ -242,8 +242,12 @@ async def generate_checkup_suggestions(user_id: str) -> list[dict]:
 
     Returns:
         List of {"text": str, "based_on_record_id": str | None} dicts.
-        Returns [] when the patient has no records, or when the LLM call or
-        JSON parse fails — callers must handle [] gracefully.
+        Returns [] when:
+          - the patient has no embedded records yet
+          - retrieval/embedding fails (e.g. Gemini API error)
+          - the LLM call fails
+          - the LLM response cannot be parsed as a valid JSON array
+        Callers must handle [] gracefully; they do not need their own guard.
     """
     from services import llm_client
 
@@ -254,7 +258,11 @@ async def generate_checkup_suggestions(user_id: str) -> list[dict]:
     _INTERNAL_QUERY = (
         "recent lab results abnormal values chronic conditions diagnoses follow-up needs monitoring"
     )
-    matches = await search_records(user_id, _INTERNAL_QUERY, k=8)
+    try:
+        matches = await search_records(user_id, _INTERNAL_QUERY, k=8)
+    except Exception as exc:
+        logger.warning("generate_checkup_suggestions: retrieval failed: %s", exc)
+        return []
     if not matches:
         return []
 
