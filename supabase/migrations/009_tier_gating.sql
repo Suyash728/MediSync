@@ -50,7 +50,8 @@ GRANT UPDATE (
     abha_number,
     phone,
     email,
-    preferred_language
+    preferred_language,
+    has_onboarded
 ) ON public.profiles TO authenticated;
 -- is_paid and trial_ends_at are intentionally excluded — service_role only.
 
