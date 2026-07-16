@@ -167,3 +167,11 @@ migration 008. `services/embeddings.py` wraps `gemini-embedding-001` with asymme
 (RETRIEVAL_DOCUMENT for stored chunks, RETRIEVAL_QUERY for search). Chunking + embedding is wired
 inline into `routers/upload.py` (non-blocking try/except after structured-data persist).
 `scripts/backfill_embeddings.py` handles existing records. RAG retrieval + `/api/chat` (A2) depends on this.
+
+### Phase A2 complete (RAG chat)
+`/api/chat` endpoint (`routers/chat.py`) grounded on `record_chunks` via `rag.search_records`.
+Deterministic refusal gate (`rag.is_relevant`, `SIMILARITY_FLOOR=0.58`) blocks LLM calls when no
+chunk clears the threshold — verified empirically against medical vs. adversarial queries.
+Groq `openai/gpt-oss-120b` → Gemini `gemini-2.5-flash` fallback via `services/llm_client.py`.
+Sources (`record_id`, `snippet`) returned per API contract. Frontend chat panel (B2) can now wire
+to the real endpoint; the dev bypass in `chat.py` must be replaced with `get_current_patient` before merge.
