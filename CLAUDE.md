@@ -167,3 +167,7 @@ migration 008. `services/embeddings.py` wraps `gemini-embedding-001` with asymme
 (RETRIEVAL_DOCUMENT for stored chunks, RETRIEVAL_QUERY for search). Chunking + embedding is wired
 inline into `routers/upload.py` (non-blocking try/except after structured-data persist).
 `scripts/backfill_embeddings.py` handles existing records. RAG retrieval + `/api/chat` (A2) depends on this.
+
+### Phase B1 complete (UI shell)": left sidebar (desktop) + hamburger left-drawer (mobile)
+adopted app-wide, legacy top nav removed. Note the shared nav-link list location so future links go in
+one place.

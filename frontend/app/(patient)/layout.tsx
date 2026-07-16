@@ -11,6 +11,7 @@
 
 import { redirect } from "next/navigation";
 import { SidebarNav } from "@/components/SidebarNav";
+import { FloatingChat } from "@/components/FloatingChat";
 import { createServerSupabaseClient } from "@/lib/supabase";
 
 export default async function PatientLayout({
@@ -48,6 +49,7 @@ export default async function PatientLayout({
         <main className="flex-1 container py-8">
           {children}
         </main>
+        <FloatingChat />
       </div>
     </div>
   );

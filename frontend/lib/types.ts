@@ -158,3 +158,17 @@ export interface ProcessingStatusResponse {
   status: MedicalRecord["processing_status"];
   error?: string;
 }
+
+// ─── Chat Assistant Types ─────────────────────────────────────────────────────
+
+export interface ChatSource {
+  record_id: string;
+  snippet: string;
+}
+
+export interface ChatResponse {
+  answer: string;
+  refused: boolean;
+  sources: ChatSource[];
+  provider: "groq" | "gemini";
+}

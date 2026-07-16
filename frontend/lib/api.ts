@@ -9,6 +9,9 @@
  * via the Authorization: Bearer header.
  */
 
+import { mockChatApi } from "./mockChat";
+import { ChatResponse } from "./types";
+
 const BACKEND_URL =
   process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000";
 
@@ -187,5 +190,25 @@ export const conflictsApi = {
       undefined,
       authToken,
     );
+  },
+};
+
+// ─── Chat-specific helpers ───────────────────────────────────────────────────
+
+export const chatApi = {
+  send(
+    message: string,
+    conversationId: string | null,
+    authToken?: string
+  ): Promise<ChatResponse> {
+    // Call the local mock chat helper
+    return mockChatApi.send(message, conversationId, authToken);
+
+    // Swap to this when wiring to the live FastAPI backend:
+    // return api.post<ChatResponse>(
+    //   "/chat",
+    //   { message, conversation_id: conversationId },
+    //   authToken
+    // );
   },
 };
