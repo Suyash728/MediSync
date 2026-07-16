@@ -12,8 +12,9 @@ Write path (upload pipeline):
 
 Read path (/api/chat endpoint):
   search_records(user_id, query, k)
-      Embeds the query and calls the match_record_chunks RPC.  RLS scopes
-      results to the caller's rows — no extra filter needed.
+      Embeds the query and calls the match_record_chunks RPC, passing user_id
+      as p_user_id so the RPC's own WHERE clause scopes results.  RLS is NOT
+      in effect here — see search_records() docstring.
 
   is_relevant(matches)
       Deterministic refusal gate: returns True only when the top result clears
@@ -25,8 +26,9 @@ Read path (/api/chat endpoint):
       short follow-up/monitoring suggestions grounded in retrieved facts.
       Called at the end of the upload pipeline and cached on the profiles row.
 
-The match_record_chunks Postgres function (008_record_chunks.sql) does the
-actual cosine-similarity ranking at query time.
+The match_record_chunks Postgres function (008_record_chunks.sql, ownership
+scoping fixed in 014_fix_match_record_chunks_scoping.sql) does the cosine-
+similarity ranking AND the ownership filter at query time.
 """
 
 import asyncio
@@ -187,14 +189,18 @@ async def embed_and_store_chunks(
 async def search_records(user_id: str, query: str, k: int = 5) -> list[dict]:
     """Semantic search over the caller's records via the match_record_chunks RPC.
 
-    RLS on record_chunks already scopes results to user_id — do NOT add a
-    PostgREST .eq() filter after .rpc().  A filter applied at that layer runs
+    Ownership is enforced by the RPC's own WHERE clause (p_user_id) — NOT by
+    RLS.  The backend always calls this through the service-role client
+    (utils.db.get_supabase), which bypasses Row-Level Security entirely, so
+    user_id must be passed into the RPC explicitly on every call.  Do NOT
+    instead add a PostgREST .eq() filter chained after .rpc(): that runs
     after the SQL function has already ranked and limited rows, so it would
-    silently drop valid results and return fewer than k matches.
+    silently drop valid results (corrupting top-k) while still leaking which
+    other patients' chunks exist.
 
     Args:
-        user_id: UUID of the authenticated patient (used only for logging;
-                 RLS enforces scoping, not an explicit filter here).
+        user_id: UUID of the authenticated patient — passed to the RPC as
+                 p_user_id so results are scoped to this patient only.
         query:   Natural-language question string.
         k:       Number of most-relevant chunks to return (passed to the RPC).
 
@@ -213,6 +219,7 @@ async def search_records(user_id: str, query: str, k: int = 5) -> list[dict]:
         "match_record_chunks",
         {
             "query_embedding": f"[{','.join(str(x) for x in query_vec)}]",
+            "p_user_id": user_id,
             "match_count": k,
         },
     ).execute()
