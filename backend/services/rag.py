@@ -20,12 +20,19 @@ Read path (/api/chat endpoint):
       SIMILARITY_FLOOR.  The LLM is never invoked on a False return; this is
       the "never hallucinate" guarantee.
 
+  generate_checkup_suggestions(user_id)
+      Retrieves the patient's most salient chunks and asks the LLM for 2–4
+      short follow-up/monitoring suggestions grounded in retrieved facts.
+      Called at the end of the upload pipeline and cached on the profiles row.
+
 The match_record_chunks Postgres function (008_record_chunks.sql) does the
 actual cosine-similarity ranking at query time.
 """
 
 import asyncio
+import json
 import logging
+import re
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -218,6 +225,104 @@ async def search_records(user_id: str, query: str, k: int = 5) -> list[dict]:
         matches[0]["similarity"] if matches else 0.0,
     )
     return matches
+
+
+async def generate_checkup_suggestions(user_id: str) -> list[dict]:
+    """Generate 2–4 personalised checkup/follow-up suggestions from the patient's records.
+
+    Retrieves the patient's most salient chunks via a broad internal query (k=8),
+    then asks the LLM for short, factual follow-up suggestions grounded strictly in
+    those retrieved facts.  Each suggestion references the source record_id so the
+    frontend can link back to the original document.
+
+    Constraints (enforced via prompt):
+    - No diagnoses, no treatment or medication advice, no diet/lifestyle/workout advice.
+    - Every suggestion is framed as "consider discussing with your doctor".
+    - Grounded only in content from the retrieved record excerpts.
+
+    Returns:
+        List of {"text": str, "based_on_record_id": str | None} dicts.
+        Returns [] when the patient has no records, or when the LLM call or
+        JSON parse fails — callers must handle [] gracefully.
+    """
+    from services import llm_client
+
+    # ── Retrieve salient chunks ───────────────────────────────────────────────
+    # Broad query surfaces a wide cross-section of the patient's history so
+    # suggestions cover the most clinically relevant items, not just the most
+    # recent upload.
+    _INTERNAL_QUERY = (
+        "recent lab results abnormal values chronic conditions diagnoses follow-up needs monitoring"
+    )
+    matches = await search_records(user_id, _INTERNAL_QUERY, k=8)
+    if not matches:
+        return []
+
+    # ── Build grounded prompt ─────────────────────────────────────────────────
+    excerpts = "\n".join(
+        f"[{i + 1}] (record_id={m['record_id']}) {m['content']}"
+        for i, m in enumerate(matches)
+    )
+
+    system = (
+        "You are a clinical information assistant. "
+        "Your only job is to identify follow-up or monitoring points from a patient's "
+        "uploaded medical records that they may want to discuss with their doctor. "
+        "You must NOT diagnose, recommend treatments, suggest medications, "
+        "or give dietary, lifestyle, or workout advice. "
+        "Frame every suggestion as 'consider discussing with your doctor'. "
+        "Base each suggestion on a specific fact from the excerpts provided — "
+        "do not invent or infer beyond what is written."
+    )
+
+    prompt = (
+        "Based ONLY on the record excerpts below, write 2–4 short, non-alarming, "
+        "factual follow-up or monitoring suggestions the patient may want to discuss "
+        "with their doctor.\n\n"
+        f"Excerpts:\n{excerpts}\n\n"
+        "Return ONLY a valid JSON array — no prose, no markdown fences. "
+        "Each object must have exactly two keys:\n"
+        "  'text'                 — the suggestion string\n"
+        "  'based_on_record_id'   — the record_id string from the matching excerpt, "
+        "or null if no single record applies\n\n"
+        'Example: [{"text": "Consider discussing your HbA1c trend with your doctor.", '
+        '"based_on_record_id": "uuid-here"}]'
+    )
+
+    # ── LLM call ──────────────────────────────────────────────────────────────
+    try:
+        raw, _ = await llm_client.complete(prompt=prompt, system=system, temperature=0.3)
+    except Exception as exc:
+        logger.warning("generate_checkup_suggestions: LLM call failed: %s", exc)
+        return []
+
+    # ── Parse and validate ────────────────────────────────────────────────────
+    try:
+        text = raw.strip()
+        # Strip any markdown code fences the LLM may have wrapped around the JSON.
+        text = re.sub(r"^```(?:json)?\s*", "", text)
+        text = re.sub(r"\s*```$", "", text)
+        parsed = json.loads(text)
+        if not isinstance(parsed, list):
+            raise ValueError("Expected a JSON array")
+        validated: list[dict] = []
+        for item in parsed:
+            if not isinstance(item, dict):
+                continue
+            suggestion_text = str(item.get("text") or "").strip()
+            if not suggestion_text:
+                continue
+            rid = item.get("based_on_record_id")
+            validated.append({
+                "text": suggestion_text,
+                "based_on_record_id": str(rid) if rid else None,
+            })
+        return validated
+    except Exception as exc:
+        logger.warning(
+            "generate_checkup_suggestions: JSON parse failed (%s): %.200r", exc, raw,
+        )
+        return []
 
 
 def is_relevant(matches: list[dict]) -> bool:

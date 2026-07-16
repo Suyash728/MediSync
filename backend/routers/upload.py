@@ -38,6 +38,7 @@ Async notes:
 import logging
 import tempfile
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, Form, status
@@ -317,6 +318,26 @@ async def upload_document(
                 logger.info("[%s] RAG: stored %d chunk(s).", record_id[:8], len(chunks))
         except Exception as exc:
             logger.warning("[%s] RAG embedding skipped (non-fatal): %s", record_id[:8], exc)
+
+    # ── 11d. Checkup suggestions — refresh cached suggestions for this patient ──
+    # Only runs for paid/trial users (suggestions are a paid feature) when the
+    # pipeline succeeded and chunks were actually stored (i.e. there is something
+    # to retrieve).  Non-blocking: a failure here must never block the upload response.
+    if not error_msg and check_access(patient_id):
+        try:
+            suggestions = await rag_svc.generate_checkup_suggestions(patient_id)
+            supabase.table("profiles").update({
+                "checkup_suggestions":      suggestions,
+                "suggestions_generated_at": datetime.now(timezone.utc).isoformat(),
+            }).eq("id", patient_id).execute()
+            logger.info(
+                "[%s] Suggestions: cached %d item(s) on profile.",
+                record_id[:8], len(suggestions),
+            )
+        except Exception as exc:
+            logger.warning(
+                "[%s] Checkup suggestions skipped (non-fatal): %s", record_id[:8], exc,
+            )
 
     # ── 12. Write access_log ──────────────────────────────────────────────────
 
