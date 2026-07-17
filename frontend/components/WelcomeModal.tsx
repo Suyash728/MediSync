@@ -129,21 +129,30 @@ export function WelcomeModal() {
           </div>
 
           <p className="text-muted-foreground leading-relaxed">
-            MediSync lets you upload medical documents from any source — prescriptions,
-            lab reports, discharge summaries — and builds a structured chronological
-            record. Drug interactions are flagged automatically, and you can share scoped,
-            time-limited views with clinicians without giving up control of your data.
+            MediSync turns the medical documents you upload — prescriptions, lab reports,
+            discharge summaries — into one structured, chronological record that stays
+            under your control.
           </p>
 
           <div className="space-y-1.5">
             <p className="font-medium text-foreground">What you can do:</p>
             <ul className="space-y-1 text-muted-foreground list-disc list-inside">
               <li>Upload and store all your medical documents in one place</li>
-              <li>View your full health history on a chronological timeline</li>
-              <li>Get automatic drug conflict alerts across your medication history</li>
+              <li>View your full health history on a timeline, with automatic drug conflict alerts</li>
+              <li>
+                Ask your records — an AI chat grounded strictly in your own documents;
+                it tells you plainly when it can&apos;t find an answer, rather than guessing
+              </li>
+              <li>Get personalised check-up suggestions based on your uploaded history</li>
               <li>Share time-limited, read-only links with clinicians — revocable any time</li>
             </ul>
           </div>
+
+          <p className="text-muted-foreground leading-relaxed">
+            Document upload, your timeline, and drug-conflict detection are free, always.
+            AI features — chat, check-up suggestions, audio playback, and AI summaries —
+            are free during a 7-day trial.
+          </p>
 
           {/* Honest limitations — prominently disclosed */}
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 space-y-1.5">
