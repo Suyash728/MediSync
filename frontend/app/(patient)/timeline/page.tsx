@@ -15,12 +15,13 @@
  * a network round-trip per keystroke would be worse than local filtering.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
+import { toast } from "sonner";
 import {
   Hospital, User, CalendarDays, Search, SlidersHorizontal,
-  FileText, AlertCircle, FileUp, Share2,
+  FileText, AlertCircle, FileUp, Share2, Printer, Loader2,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -47,6 +48,30 @@ interface TimelineRecord {
   doctor:            string | null;
   summary:           string | null;
   processing_status: string;
+}
+
+// Shape of GET /records/{id}'s `record` field — only what Export/Print needs.
+interface PrintRecordDetail {
+  id:        string;
+  title:     string;
+  file_path: string | null;
+  file_url:  string | null;
+}
+
+interface PrintDoc {
+  id:       string;
+  title:    string;
+  fileUrl:  string;
+  isImage:  boolean;
+}
+
+// Mirrors record/[id]/page.tsx's isImageFile — same extension check, local
+// copy since it's a small pure function and neither page currently shares
+// helpers via lib/.
+function isImageFile(fileUrl: string | null, filePath: string | null): boolean {
+  const src = fileUrl ?? filePath ?? "";
+  const ext = src.split("?")[0].split(".").pop()?.toLowerCase() ?? "";
+  return ext === "jpg" || ext === "jpeg" || ext === "png";
 }
 
 // Record type badge colour mapping (data, not labels — labels come from i18n)
@@ -84,6 +109,13 @@ export default function TimelinePage() {
   // Select-to-share mode
   const [selectMode,  setSelectMode]  = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // Export/Print PDF (same selection, separate action)
+  const [exporting, setExporting] = useState(false);
+  const [printDocs, setPrintDocs] = useState<PrintDoc[]>([]);
+  // Resolvers for each doc's onLoad, populated right before the print-only
+  // container renders so the JSX's onLoad handlers can always find them.
+  const loadResolversRef = useRef<Map<string, () => void>>(new Map());
 
   // ── Fetch all records ──────────────────────────────────────────────────────
 
@@ -162,6 +194,90 @@ export default function TimelinePage() {
   function exitSelectMode() {
     setSelectMode(false);
     setSelectedIds(new Set());
+  }
+
+  // ── Export / Print PDF ──────────────────────────────────────────────────────
+  //
+  // Prints ONLY the original uploaded documents for the selected records — no
+  // app chrome, no AI summaries, no lab/med tables (see the @media print rules
+  // in globals.css). There's no batch signed-URL endpoint, so we fetch a fresh
+  // file_url per record via GET /records/{id}, capped at a modest concurrency.
+  //
+  // window.print() is used instead of jsPDF/html2canvas: those rasterise via
+  // <canvas>, which taints on cross-origin Supabase signed URLs and fails.
+  // Images are embedded directly; PDFs via <iframe> (shipped, not the
+  // full-page-link-list fallback — see report).
+
+  async function handleExportPrint() {
+    setExporting(true);
+
+    const supabase = createClient();
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) { setExporting(false); return; }
+
+    const ids = Array.from(selectedIds);
+    const docs: PrintDoc[] = [];
+
+    // Fetch fresh signed URLs in capped-concurrency batches, not one big
+    // Promise.all — keeps this well-behaved for larger selections.
+    const CONCURRENCY = 4;
+    for (let i = 0; i < ids.length; i += CONCURRENCY) {
+      const batch = ids.slice(i, i + CONCURRENCY);
+      const results = await Promise.all(
+        batch.map(async (id): Promise<PrintDoc | null> => {
+          try {
+            const res = await api.get<{ record: PrintRecordDetail }>(
+              `/records/${id}`,
+              session.access_token,
+            );
+            if (!res.record.file_url) return null;
+            return {
+              id:      res.record.id,
+              title:   res.record.title,
+              fileUrl: res.record.file_url,
+              isImage: isImageFile(res.record.file_url, res.record.file_path),
+            };
+          } catch {
+            return null;   // skip records whose fetch/signing failed
+          }
+        }),
+      );
+      docs.push(...results.filter((d): d is PrintDoc => d !== null));
+    }
+
+    if (docs.length === 0) {
+      toast.error("None of the selected records have a printable document.");
+      setExporting(false);
+      return;
+    }
+
+    // Populate resolvers BEFORE mounting the print container — the onLoad/
+    // onError handlers in the JSX below read from this ref by id, so it must
+    // already hold an entry for every doc by the time the browser fires load.
+    loadResolversRef.current = new Map();
+    const loadPromises = docs.map(
+      (doc) =>
+        new Promise<void>((resolve) => {
+          loadResolversRef.current.set(doc.id, resolve);
+          // Fallback: cross-origin PDF iframes don't always fire onLoad
+          // reliably — don't let one stuck doc block printing forever.
+          setTimeout(resolve, 4000);
+        }),
+    );
+
+    setPrintDocs(docs);
+    await Promise.all(loadPromises);
+
+    window.print();
+    setExporting(false);
+
+    // Drop the (signed-URL-bearing) print content once the print dialog
+    // closes, rather than leaving it sitting in the DOM indefinitely.
+    const cleanup = () => {
+      setPrintDocs([]);
+      window.removeEventListener("afterprint", cleanup);
+    };
+    window.addEventListener("afterprint", cleanup);
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -359,13 +475,32 @@ export default function TimelinePage() {
     {/* ── Sticky action bar (shown when 1+ records selected) ──────────────────── */}
     {selectMode && selectedIds.size > 0 && (
       <div className="fixed bottom-0 left-0 right-0 z-50 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 p-4">
-        <div className="container flex items-center justify-between gap-4">
+        <div className="container flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <span className="text-sm font-medium text-foreground">
             {selectedIds.size} record{selectedIds.size !== 1 ? "s" : ""} selected
           </span>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
               Clear
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void handleExportPrint()}
+              disabled={exporting}
+              aria-label="Export or print the original documents for the selected records"
+            >
+              {exporting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+                  Preparing…
+                </>
+              ) : (
+                <>
+                  <Printer className="mr-2 h-4 w-4" aria-hidden="true" />
+                  Export / Print PDF
+                </>
+              )}
             </Button>
             <ShareDialog
               recordIds={Array.from(selectedIds)}
@@ -381,6 +516,32 @@ export default function TimelinePage() {
         </div>
       </div>
     )}
+
+    {/* ── Print-only container (Export/Print PDF) ──────────────────────────────
+        Hidden on screen; shown ONLY under @media print via globals.css, which
+        also hides everything else on the page. One document per printed page. */}
+    <div id="print-export-root" className="hidden">
+      {printDocs.map((doc) => (
+        <div key={doc.id} className="print-page">
+          <p className="print-page-title">{doc.title}</p>
+          {doc.isImage ? (
+            // eslint-disable-next-line @next/next/no-img-element -- print-only content, not a Next-optimised asset
+            <img
+              src={doc.fileUrl}
+              alt={doc.title}
+              onLoad={() => loadResolversRef.current.get(doc.id)?.()}
+              onError={() => loadResolversRef.current.get(doc.id)?.()}
+            />
+          ) : (
+            <iframe
+              src={doc.fileUrl}
+              title={doc.title}
+              onLoad={() => loadResolversRef.current.get(doc.id)?.()}
+            />
+          )}
+        </div>
+      ))}
+    </div>
     </>
   );
 }

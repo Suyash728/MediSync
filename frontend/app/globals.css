@@ -95,3 +95,53 @@
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
+
+/*
+  Print-only export (Timeline "Export / Print PDF").
+  Standard "print only this element" technique: hide everything via
+  visibility (preserves layout, unlike display:none) then re-reveal only
+  #print-export-root, absolutely positioned at the page origin so the rest
+  of the (invisible) app shell doesn't leave blank space above it.
+*/
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #print-export-root,
+  #print-export-root * {
+    visibility: visible;
+  }
+  #print-export-root {
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+  }
+  .print-page {
+    page-break-after: always;
+    break-after: page;
+    width: 100%;
+  }
+  .print-page:last-child {
+    page-break-after: auto;
+    break-after: auto;
+  }
+  .print-page-title {
+    font-size: 12pt;
+    font-weight: 600;
+    margin: 0 0 6pt;
+  }
+  .print-page img,
+  .print-page iframe {
+    display: block;
+    width: 100%;
+    height: 100vh;
+    border: none;
+  }
+  @page {
+    margin: 0.4in;
+  }
+}
