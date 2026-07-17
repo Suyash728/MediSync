@@ -16,12 +16,13 @@ import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from models.schemas import ShareGrantCreate
 from utils.access import require_active_access
 from utils.auth import get_current_patient
 from utils.db import get_supabase
+from utils.limiter import limiter
 from utils.storage import get_signed_url
 
 logger = logging.getLogger(__name__)
@@ -159,10 +160,14 @@ async def revoke_share_grant(
 
 
 @router.get("/view/{token}", summary="[Public] Validate token and return scoped records")
-async def view_shared_records(token: str) -> dict:
+@limiter.limit("10/minute")
+async def view_shared_records(request: Request, token: str) -> dict:
     """
     Public endpoint — no patient authentication required.
     Resolves a share token and returns the patient's scoped health records.
+
+    Rate-limited to 10/minute per IP (slowapi) — this is the only unauthenticated
+    endpoint in the app, so it's the one abuse/enumeration vector worth throttling.
 
     Authorization logic (the three-gate check):
       1. Token lookup via service-role key (bypasses RLS).  We cannot use the anon
