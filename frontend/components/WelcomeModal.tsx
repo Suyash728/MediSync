@@ -97,7 +97,9 @@ export function WelcomeModal() {
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent
+        className="w-[calc(100%-2rem)] sm:max-w-lg max-h-[85vh] overflow-y-auto pb-[max(1.5rem,env(safe-area-inset-bottom))]"
+      >
         <DialogHeader>
           <DialogTitle className="text-xl">Welcome to MediSync</DialogTitle>
           <DialogDescription>
@@ -115,7 +117,7 @@ export function WelcomeModal() {
               id="welcome-lang"
               value={selectedLang}
               onChange={(e) => setSelectedLang(e.target.value)}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
             >
               {LANGUAGE_OPTIONS.map(({ code, label }) => (
                 <option key={code} value={code}>{label}</option>
