@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 # 0.5 GB RAM — the model alone is ~400 MB which leaves nothing for FastAPI).
 # LLM extraction in llm.py handles structured data regardless; BioBERT is a
 # secondary signal that improves accuracy but is not required for the app to work.
-USE_LOCAL_NER: bool = os.getenv("USE_LOCAL_NER", "true").lower() == "true"
+USE_LOCAL_NER: bool = os.getenv("USE_LOCAL_NER", "false").lower() == "true"
 
 # BioBERT NER pipeline — loaded once, then reused across requests.
 # Loading takes ~10 s on first call (downloads ~400 MB from HuggingFace Hub).
