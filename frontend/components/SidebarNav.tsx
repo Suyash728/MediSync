@@ -166,7 +166,7 @@ interface SidebarContentProps {
   userName: string;
   userInitials: string;
   userAvatar?: string;
-  t: (key: any) => string;
+  t: (key: string) => string;
   handleSignOut: () => void;
   onItemClick?: () => void;
 }

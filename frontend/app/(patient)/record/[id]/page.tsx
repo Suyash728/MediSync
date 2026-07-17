@@ -216,9 +216,10 @@ export default function RecordDetailPage({
       setTtsState("playing");
     } catch (err) {
       setTtsState("idle");
-      // Same catch idiom as the chat panel's 402 handling (APIError.status).
-      // TODO: swap this toast for the shared <PaidGate>/useAccess upgrade
-      // card once the B3 access layer (frontend-dev) merges into this branch.
+      // Race fallback only: the TTS controls are already wrapped in <PaidGate>
+      // (below), so useAccess normally hides this button before a trial-expired
+      // 402 can fire. This branch only matters if access expires between page
+      // load and the click itself.
       if (err instanceof APIError && err.status === 402) {
         toast.error("Upgrade to Premium to unlock audio playback.", {
           action: { label: "Upgrade", onClick: () => router.push("/settings") },

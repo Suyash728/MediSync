@@ -231,7 +231,7 @@ export function FloatingChat() {
                               title="Click to view medical record details"
                             >
                               <span className="line-clamp-2 pr-2 italic">
-                                "{source.snippet}"
+                                &quot;{source.snippet}&quot;
                               </span>
                               <ArrowUpRight className="h-3.5 w-3.5 text-muted-foreground group-hover:text-primary transition-colors flex-shrink-0" />
                             </Link>

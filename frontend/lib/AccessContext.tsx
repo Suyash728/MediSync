@@ -36,7 +36,7 @@ export function AccessProvider({ children }: { children: React.ReactNode }) {
       setIsPaid(res.is_paid);
       setTrialEndsAt(res.trial_ends_at);
       setHasAccess(res.has_access);
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Safe-closed on any fetch error: paid features must fail locked, not
       // open. Free surfaces don't read hasAccess, so this has no effect on them.
       setIsPaid(false);
