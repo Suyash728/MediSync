@@ -10,7 +10,7 @@ Pipeline (in order):
         PDF with native text layer → PyMuPDF
         Scanned PDF / images → Gemini Vision (Tesseract fallback)
   6.  LLM structured extraction (PRIMARY) → extract_structured_async()
-        Groq llama-3.3-70b-versatile in JSON mode → typed dict
+        Groq openai/gpt-oss-120b in JSON mode → typed dict
         {medications, lab_values, diagnoses, document_date, summary, …}
   7.  BioBERT NER (SECONDARY) → extract_entities_async()
         Merge NER-found drugs / lab values not already in LLM output;

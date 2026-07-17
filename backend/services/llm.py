@@ -13,7 +13,7 @@ Two distinct operations, both using Groq (Gemini fallback):
        Generates a concise, factual clinical summary for the patient record.
        Prompt is deliberately clinical and precise — not casual or reassuring.
 
-Primary:  Groq llama-3.3-70b-versatile (fast, large context, JSON mode)
+Primary:  Groq openai/gpt-oss-120b (fast, large context, JSON mode)
 Fallback: Google Gemini (via google-genai SDK — new unified SDK, NOT google-generativeai)
 """
 
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 # Groq model — used for both structured extraction (JSON mode) and summary generation.
 # Gemini model is read from settings.gemini_model (configurable via GEMINI_MODEL env var).
-_GROQ_MODEL = "llama-3.3-70b-versatile"
+_GROQ_MODEL = "openai/gpt-oss-120b"
 
 # Lazy-initialised clients
 _groq_async_client = None

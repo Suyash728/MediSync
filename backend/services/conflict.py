@@ -16,7 +16,7 @@ Detection pipeline:
   3. Check every medication pair against the curated DDI dataset.
      THE MATCH IS DETERMINISTIC (CSV lookup) — the LLM only generates
      the plain-language explanation after a match is confirmed.
-  4. For each matched pair call Groq (llama-3.3-70b-versatile) to produce
+  4. For each matched pair call Groq (openai/gpt-oss-120b) to produce
      a 2-3 sentence patient-facing explanation and action guidance.
   5. Persist new conflicts to drug_conflicts (existing rows are preserved
      so that is_acknowledged status is not reset on re-check).
@@ -36,7 +36,7 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-_GROQ_MODEL = "llama-3.3-70b-versatile"
+_GROQ_MODEL = "openai/gpt-oss-120b"
 
 # ── Data file paths ────────────────────────────────────────────────────────────
 
