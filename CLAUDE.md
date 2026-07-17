@@ -137,6 +137,11 @@ Both branches merge into `main` at defined phase checkpoints. Both agents should
 assume the other branch is moving concurrently and avoid assumptions about files
 only the other track owns.
 
+**Conflict-avoidance notes:** `frontend/app/(patient)/record/[id]/page.tsx` is an
+exception to the backend/** vs frontend/** split — both tracks touched it this
+phase (A5's TTS integration, B3's access-layer gating). Check it explicitly at
+every merge checkpoint from here on, not just this file.
+
 **Locked scope (dependency order):**
 1. Embedding-on-upload pipeline
 2. RAG retrieval + chat endpoint with citations and refusal
@@ -214,3 +219,25 @@ Floating chat panel UI implemented and wired live against backend `/chat/` endpo
 Client-side access controls landed: `useAccess` context hook queries `GET /profile/access/` with active trial mock fallbacks for local dev.
 Gated paid surfaces: AI clinical summaries, TTS play button, Share link creation (`ShareDialog`), dashboard Checkup Suggestions (Phase B4 placeholder), and Floating Chat entry/panel.
 Ungated free surfaces: Document uploads, timeline/record viewing, drug-conflict alerts, language switching. Free workflows fail-open on fetch delays or route failures.
+
+### Phase A5 complete (TTS caching + rate limiting)
+- TTS ported from dead backend/services/tts.py + ungated frontend/app/api/tts/route.ts into
+  a real, gated POST /tts/ endpoint (require_active_access), chunked Sarvam synthesis, and a
+  sha256(text|language_code)-keyed cache in the tts-cache Supabase Storage bucket.
+- slowapi per-IP limits (5/min TTS, 10/min share view) via a shared utils/limiter.py — no
+  middleware, no Redis.
+- frontend/app/api/tts/route.ts removed; record page now calls the backend via a new
+  ttsApi.synthesise() helper in lib/api.ts and plays audio_url directly (no blob/object-URL).
+- KNOWN DEVIATION: the 402 (trial expired) handling in record/[id]/page.tsx does NOT use
+  PaidGate/useAccess — that access-layer stack (AccessControl.tsx, AccessContext.tsx,
+  FloatingChat.tsx's 402 handler) only exists on frontend-dev, unmerged as of this branch.
+  Used a self-contained `err instanceof APIError && err.status === 402` toast + "Upgrade"
+  button instead, marked with a TODO comment in the handleTts() catch block. This MUST be
+  swapped for <PaidGate>/useAccess once frontend-dev merges — do not let the TODO survive
+  past that merge.
+- EXPECTED MERGE CONFLICT: frontend-dev has independently modified this same
+  record/[id]/page.tsx (145-line B3 change touching the same TTS handler region). At the
+  M3 merge checkpoint, resolve by keeping backend-dev's ttsApi.synthesise() call + audio_url
+  playback logic (the actual backend integration) but taking frontend-dev's PaidGate/useAccess
+  version of the 402 branch, deleting the toast-based TODO fallback entirely rather than
+  merging both.
