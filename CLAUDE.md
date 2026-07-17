@@ -182,7 +182,6 @@ Sources (`record_id`, `snippet`) returned per API contract. Frontend chat panel 
 to the real endpoint; the dev bypass in `chat.py` must be replaced with `get_current_patient` before merge.
 
 ### Phase B1 complete (UI shell)
-<<<<<<< HEAD
 Left sidebar (desktop) + hamburger left-drawer (mobile) adopted app-wide, legacy top nav removed.
 Note the shared nav-link list location so future links go in one place.
 
@@ -212,11 +211,6 @@ the fix with zero code changes of their own (single shared call site).
 Re-verified: zero-record user → `suggestions: []` and chat `refused: true` (previously
 returned another patient's data in both). Demo account's legitimate retrieval confirmed
 unaffected (positive control).
-<<<<<<< HEAD
-=======
-Left sidebar (desktop) + hamburger left-drawer (mobile) adopted app-wide, legacy top nav removed. Note the shared nav-link list location so future links go in one place.
-=======
->>>>>>> backend-dev
 
 ### Phase B2 complete (floating chat panel)
 Floating chat panel UI implemented and wired live against backend `/chat/` endpoint (FastAPI RAG). Renders source citations linking to `/record/[record_id]`, formats refusal states in warning style, handles 402 tier gating via a lock placeholder upgrading overlay card, and displays the underlying LLM provider under assistant messages.
@@ -226,10 +220,6 @@ Client-side access controls landed: `useAccess` context hook queries `GET /profi
 Gated paid surfaces: AI clinical summaries, TTS play button, Share link creation (`ShareDialog`), dashboard Checkup Suggestions (Phase B4 placeholder), and Floating Chat entry/panel.
 Ungated free surfaces: Document uploads, timeline/record viewing, drug-conflict alerts, language switching. Free workflows fail-open on fetch delays or route failures.
 
-<<<<<<< HEAD
-
->>>>>>> frontend-dev
-=======
 ### Phase A5 complete (TTS caching + rate limiting)
 - TTS ported from dead backend/services/tts.py + ungated frontend/app/api/tts/route.ts into
   a real, gated POST /tts/ endpoint (require_active_access), chunked Sarvam synthesis, and a
@@ -251,4 +241,12 @@ Ungated free surfaces: Document uploads, timeline/record viewing, drug-conflict 
   playback logic (the actual backend integration) but taking frontend-dev's PaidGate/useAccess
   version of the 402 branch, deleting the toast-based TODO fallback entirely rather than
   merging both.
->>>>>>> backend-dev
+
+### Phase B4 complete (dashboard suggestions)
+Live "Suggested check-ups" card wired to GET /suggestions/ + POST /suggestions/refresh,
+replacing the static Phase B3 placeholder. Gated via the now-real useAccess/PaidGate — the
+access-endpoint fix (frontend now calls the real GET /me/access instead of the missing
+/profile/access/) means this gating is genuinely enforced, not the old fail-open mock.
+Each suggestion shows a "Why?" link to its source record when based_on_record_id is set;
+Skeleton loading state and an empty state ("Upload records to get personalised check-up
+suggestions") are included.
