@@ -250,3 +250,11 @@ access-endpoint fix (frontend now calls the real GET /me/access instead of the m
 Each suggestion shows a "Why?" link to its source record when based_on_record_id is set;
 Skeleton loading state and an empty state ("Upload records to get personalised check-up
 suggestions") are included.
+
+### Phase B5 complete (timeline export)
+Existing multi-select + "Share selected" retained; added a documents-only "Export / Print PDF"
+action to the same bar, via window.print() + @media print CSS (no jsPDF/html2canvas — those
+taint on cross-origin Supabase signed URLs), fetching a fresh signed URL per selected record
+(no batch endpoint) and rendering one document per printed page. PDFs are embedded via
+`<iframe>` (shipped over the link-list fallback — iframe rendering isn't subject to canvas
+taint). Free feature, not gated — only share-link creation is paid.
