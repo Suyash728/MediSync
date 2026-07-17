@@ -204,6 +204,24 @@ export const ttsApi = {
   },
 };
 
+// ─── Suggestions-specific helpers ────────────────────────────────────────────
+
+export const suggestionsApi = {
+  list(authToken: string) {
+    return api.get<{
+      suggestions: { text: string; based_on_record_id: string | null }[];
+      generated_at: string | null;
+    }>("/suggestions/", authToken);
+  },
+
+  refresh(authToken: string) {
+    return api.post<{
+      suggestions: { text: string; based_on_record_id: string | null }[];
+      generated_at: string | null;
+    }>("/suggestions/refresh", undefined, authToken);
+  },
+};
+
 // ─── Chat-specific helpers ───────────────────────────────────────────────────
 
 export const chatApi = {

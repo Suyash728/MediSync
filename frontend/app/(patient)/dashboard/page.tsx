@@ -16,9 +16,10 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
+import { toast } from "sonner";
 import {
   FileText, Pill, TriangleAlert,
-  Loader2, FileUp, AlertCircle, ChevronRight, Sparkles,
+  Loader2, FileUp, AlertCircle, ChevronRight, Sparkles, RefreshCw,
 } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
@@ -30,8 +31,9 @@ import { UploadZone } from "@/components/UploadZone";
 import { RecordCard } from "@/components/RecordCard";
 import { WelcomeModal } from "@/components/WelcomeModal";
 import { PaidGate } from "@/components/AccessControl";
+import { useAccess } from "@/lib/AccessContext";
 import { createClient } from "@/lib/supabase";
-import { api } from "@/lib/api";
+import { api, suggestionsApi, APIError } from "@/lib/api";
 import type { RecordType, ConflictSeverity } from "@/lib/types";
 
 // ── Local types ───────────────────────────────────────────────────────────────
@@ -50,6 +52,11 @@ interface RecordRow {
   medication_count?:   number;
   lab_value_count?:    number;
   abnormal_lab_count?: number;
+}
+
+interface CheckupSuggestion {
+  text:                string;
+  based_on_record_id:  string | null;
 }
 
 interface DrugConflict {
@@ -105,6 +112,145 @@ function StatCard({
           )}
           <p className="text-xs text-muted-foreground truncate">{label}</p>
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Suggested check-ups card ────────────────────────────────────────────────────
+//
+// Mounted only inside <PaidGate> (see render below) — PaidGate renders its own
+// lock placeholder instead of {children} when the patient lacks access, so this
+// component (and its fetch effect) never mounts in that case. That's what gates
+// the fetch itself, not an extra hasAccess check here.
+//
+// Mid-session race (access expires between page load and a list/refresh call):
+// on a 402 we call refreshAccess() from useAccess() instead of showing an error
+// toast — that re-fetches access, PaidGate sees hasAccess flip to false, and
+// swaps this card out for its own upgrade placeholder on the next render.
+
+function SuggestionsCard() {
+  const { refreshAccess } = useAccess();
+
+  const [suggestions, setSuggestions] = useState<CheckupSuggestion[]>([]);
+  const [loading,     setLoading]     = useState(true);
+  const [refreshing,  setRefreshing]  = useState(false);
+  const [error,       setError]       = useState<string | null>(null);
+
+  const loadSuggestions = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+
+    const supabase = createClient();
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) { setLoading(false); return; }
+
+    try {
+      const res = await suggestionsApi.list(session.access_token);
+      setSuggestions(res.suggestions);
+    } catch (err) {
+      if (err instanceof APIError && err.status === 402) {
+        await refreshAccess();
+      } else {
+        setError(err instanceof Error ? err.message : "Failed to load suggestions.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [refreshAccess]);
+
+  useEffect(() => { void loadSuggestions(); }, [loadSuggestions]);
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    const supabase = createClient();
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) { setRefreshing(false); return; }
+
+    try {
+      const res = await suggestionsApi.refresh(session.access_token);
+      setSuggestions(res.suggestions);
+      setError(null);
+    } catch (err) {
+      if (err instanceof APIError && err.status === 402) {
+        await refreshAccess();
+      } else {
+        toast.error("Could not refresh suggestions. Please try again.");
+      }
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardContent className="pt-6 space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+            Based on your uploaded medical records, prescriptions, and lab reports.
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={refreshing || loading}
+            aria-label="Refresh suggestions"
+            className="shrink-0"
+          >
+            <RefreshCw
+              className={`h-3.5 w-3.5 mr-1.5 ${refreshing ? "animate-spin" : ""}`}
+              aria-hidden="true"
+            />
+            Refresh
+          </Button>
+        </div>
+
+        {loading && (
+          <div className="space-y-2">
+            <Skeleton className="h-14 w-full rounded-lg" />
+            <Skeleton className="h-14 w-full rounded-lg" />
+          </div>
+        )}
+
+        {!loading && error && (
+          <p className="text-xs text-destructive">{error}</p>
+        )}
+
+        {!loading && !error && suggestions.length === 0 && (
+          <div className="flex flex-col items-center gap-2 py-6 text-center">
+            <p className="text-sm text-muted-foreground">
+              Upload records to get personalised check-up suggestions.
+            </p>
+            <Link href="#upload-zone" className="text-sm text-primary hover:underline">
+              Upload a record
+            </Link>
+          </div>
+        )}
+
+        {!loading && !error && suggestions.length > 0 && (
+          <div className="space-y-2">
+            {suggestions.map((s, i) => (
+              <div
+                key={i}
+                className="flex items-center justify-between gap-3 p-3 border rounded-lg bg-slate-50 dark:bg-slate-900/50"
+              >
+                <p className="text-sm text-slate-700 dark:text-slate-300">{s.text}</p>
+                {s.based_on_record_id && (
+                  <Link
+                    href={`/record/${s.based_on_record_id}`}
+                    className="text-xs text-primary hover:underline shrink-0"
+                  >
+                    Why?
+                  </Link>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <p className="text-[11px] text-muted-foreground italic pt-1 border-t">
+          Not medical advice — discuss with your doctor.
+        </p>
       </CardContent>
     </Card>
   );
@@ -286,34 +432,14 @@ export default function DashboardPage() {
         </Alert>
       )}
 
-      {/* ── Checkup Suggestions Area (Premium Feature) ────────────────────────── */}
+      {/* ── Suggested check-ups ───────────────────────────────────────────────── */}
       <div className="space-y-3">
         <h2 className="text-base font-semibold tracking-tight flex items-center gap-2">
           <Sparkles className="h-4 w-4 text-primary" aria-hidden="true" />
-          AI Checkup Suggestions
+          Suggested check-ups
         </h2>
         <PaidGate featureName="Checkup Suggestions">
-          <Card>
-            <CardContent className="pt-6 space-y-4">
-              <p className="text-sm text-slate-650 dark:text-slate-350 leading-relaxed">
-                Based on your uploaded medical records, prescriptions, and lab reports, here are suggestions for upcoming doctor follow-ups and diagnostic checkups:
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="p-3 border rounded-lg bg-slate-50 dark:bg-slate-900/50 space-y-1">
-                  <span className="text-xs font-bold text-teal-600 dark:text-teal-400">Cardiology Review</span>
-                  <p className="text-xs text-muted-foreground leading-normal">
-                    Due for a follow-up ECG in 2 months based on your last discharge report.
-                  </p>
-                </div>
-                <div className="p-3 border rounded-lg bg-slate-50 dark:bg-slate-900/50 space-y-1">
-                  <span className="text-xs font-bold text-teal-600 dark:text-teal-400">Lipid Profile Test</span>
-                  <p className="text-xs text-muted-foreground leading-normal">
-                    Recommended screening in 3 weeks to monitor response to statin therapy.
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <SuggestionsCard />
         </PaidGate>
       </div>
 
