@@ -9,7 +9,6 @@
  * via the Authorization: Bearer header.
  */
 
-import { mockChatApi } from "./mockChat";
 import { ChatResponse } from "./types";
 
 const BACKEND_URL =
