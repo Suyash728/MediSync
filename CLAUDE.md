@@ -258,3 +258,8 @@ taint on cross-origin Supabase signed URLs), fetching a fresh signed URL per sel
 (no batch endpoint) and rendering one document per printed page. PDFs are embedded via
 `<iframe>` (shipped over the link-list fallback — iframe rendering isn't subject to canvas
 taint). Free feature, not gated — only share-link creation is paid.
+
+### Phase B6 complete (WelcomeModal)
+Mobile responsiveness fixed (max-height + internal scroll, safe-area padding, no desktop
+change); copy updated for 2.0 — introduces Ask-your-records chat and cached check-up
+suggestions, frames the 7-day trial vs. free-forever split.
