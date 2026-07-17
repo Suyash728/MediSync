@@ -11,9 +11,10 @@
  *   - Extracted lab values table (abnormal values highlighted in amber)
  *
  * TTS state machine: idle → loading → playing → paused
- *   Audio is fetched from /api/tts (POST) and played via a blob URL in an
- *   HTMLAudioElement.  The Sarvam API key lives server-side in the API route —
- *   it is never exposed to the browser.  TTS is omitted when no summary exists.
+ *   Audio is fetched from the FastAPI backend's POST /tts/ (via ttsApi in
+ *   lib/api.ts), which returns a signed Supabase Storage URL — played directly
+ *   in an HTMLAudioElement, no blob/object-URL step needed.  The Sarvam API key
+ *   lives server-side in the backend only.  TTS is omitted when no summary exists.
  *
  * Data: GET /records/{id} via lib/api.ts — returns record + medications + lab_values.
  * Security: the FastAPI endpoint verifies the patient_id, so another patient's
@@ -45,7 +46,7 @@ import {
 import { ShareDialog } from "@/components/ShareDialog";
 import { PaidGate } from "@/components/AccessControl";
 import { createClient } from "@/lib/supabase";
-import { api, APIError } from "@/lib/api";
+import { api, ttsApi, APIError } from "@/lib/api";
 import type { RecordType } from "@/lib/types";
 
 // ── Types mirroring the backend /records/{id} response ────────────────────────
@@ -143,7 +144,6 @@ export default function RecordDetailPage({
 
   // TTS state
   const [ttsState,  setTtsState]  = useState<TtsState>("idle");
-  const [audioUrl,  setAudioUrl]  = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // ── Fetch record ────────────────────────────────────────────────────────────
@@ -175,13 +175,6 @@ export default function RecordDetailPage({
 
   useEffect(() => { void fetchRecord(); }, [fetchRecord]);
 
-  // Revoke blob URL when component unmounts or audio URL changes
-  useEffect(() => {
-    return () => {
-      if (audioUrl) URL.revokeObjectURL(audioUrl);
-    };
-  }, [audioUrl]);
-
   // ── TTS ─────────────────────────────────────────────────────────────────────
 
   async function handleTts() {
@@ -197,30 +190,22 @@ export default function RecordDetailPage({
       return;
     }
 
-    // idle → loading: fetch audio from our server-side API route
+    // idle → loading: fetch audio from the backend (cached, gated, paid feature)
     if (!data?.record.summary) return;
     setTtsState("loading");
 
+    const supabase = createClient();
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) { setTtsState("idle"); return; }
+
     try {
-      const res = await fetch("/api/tts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text: data.record.summary,
-          language_code: locale,
-        }),
-      });
+      const { audio_url } = await ttsApi.synthesise(
+        data.record.summary,
+        locale,
+        session.access_token,
+      );
 
-      if (!res.ok) throw new Error(`TTS API error: ${res.status}`);
-
-      const blob = await res.blob();
-      const url  = URL.createObjectURL(blob);
-
-      // Revoke previous blob to avoid memory leaks
-      if (audioUrl) URL.revokeObjectURL(audioUrl);
-      setAudioUrl(url);
-
-      const audio = new Audio(url);
+      const audio = new Audio(audio_url);
       audioRef.current = audio;
       audio.onended = () => setTtsState("idle");
       audio.onerror = () => {
@@ -229,9 +214,18 @@ export default function RecordDetailPage({
       };
       void audio.play();
       setTtsState("playing");
-    } catch {
+    } catch (err) {
       setTtsState("idle");
-      toast.error("Could not generate audio. Please try again.");
+      // Same catch idiom as the chat panel's 402 handling (APIError.status).
+      // TODO: swap this toast for the shared <PaidGate>/useAccess upgrade
+      // card once the B3 access layer (frontend-dev) merges into this branch.
+      if (err instanceof APIError && err.status === 402) {
+        toast.error("Upgrade to Premium to unlock audio playback.", {
+          action: { label: "Upgrade", onClick: () => router.push("/settings") },
+        });
+      } else {
+        toast.error("Could not generate audio. Please try again.");
+      }
     }
   }
 

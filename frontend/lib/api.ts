@@ -193,6 +193,18 @@ export const conflictsApi = {
   },
 };
 
+// ─── TTS-specific helpers ─────────────────────────────────────────────────────
+
+export const ttsApi = {
+  synthesise(text: string, languageCode: string, authToken: string) {
+    return api.post<{ audio_url: string }>(
+      "/tts/",
+      { text, language_code: languageCode },
+      authToken,
+    );
+  },
+};
+
 // ─── Chat-specific helpers ───────────────────────────────────────────────────
 
 export const chatApi = {

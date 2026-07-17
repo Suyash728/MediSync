@@ -45,5 +45,8 @@ tenacity==8.2.3               # Retry transient API errors (Groq/Gemini/Sarvam) 
 python-dotenv==1.0.1
 aiofiles==23.2.1
 
+# ── Rate limiting ────────────────────────────────────────────────────────────
+slowapi==0.1.9                # Decorator-only per-route limits on public/cost-bearing routes
+
 # ── DrugBank / interaction data ───────────────────────────────────────────────
 # No dedicated package — we query DrugBank Open Data CSV directly (see conflict.py)

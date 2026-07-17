@@ -9,9 +9,12 @@ Security notes:
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
-from routers import upload, process, records, conflicts, share, abha, profile, chat, me, suggestions
+from routers import upload, process, records, conflicts, share, abha, profile, chat, me, suggestions, tts
 from utils.config import settings
+from utils.limiter import limiter
 
 app = FastAPI(
     title="MediSync API",
@@ -21,6 +24,20 @@ app = FastAPI(
     docs_url="/docs" if settings.environment == "development" else None,
     redoc_url=None,
 )
+
+# ── Rate limiting (slowapi) ─────────────────────────────────────────────────────
+# Decorator-only: no SlowAPIMiddleware, so only routes explicitly decorated with
+# @limiter.limit(...) are limited (the public share-view and TTS routes — see
+# routers/share.py and routers/tts.py). In-memory storage is fine at our
+# single-instance Railway scale — no Redis.
+#
+# get_remote_address (utils/limiter.py) reads the request's client IP. Railway
+# runs the app behind a proxy, so the real client IP only shows up once the
+# process is started with `uvicorn --proxy-headers` (or Railway's equivalent
+# proxy config) — that's a start-command/deploy setting, not something fixable
+# in this file.
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # ── CORS ──────────────────────────────────────────────────────────────────────
 # Allow only the frontend origin. Never use allow_origins=["*"] for a medical app.
@@ -43,6 +60,7 @@ app.include_router(profile,   prefix="/profile",   tags=["profile"])
 app.include_router(chat.router, prefix="/chat",    tags=["chat"])
 app.include_router(me.router,          prefix="/me",          tags=["me"])
 app.include_router(suggestions.router, prefix="/suggestions",  tags=["suggestions"])
+app.include_router(tts.router,         prefix="/tts",           tags=["tts"])
 
 
 # ── Health check ──────────────────────────────────────────────────────────────
