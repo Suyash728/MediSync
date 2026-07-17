@@ -233,7 +233,7 @@ export const profileApi = {
       is_paid: boolean;
       trial_ends_at: string | null;
       has_access: boolean;
-    }>("/profile/access/", authToken);
+    }>("/me/access", authToken);
   },
 };
 

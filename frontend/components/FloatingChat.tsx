@@ -39,7 +39,7 @@ const SUGGESTIONS = [
 ];
 
 export function FloatingChat() {
-  const { hasAccess } = useAccess();
+  const { hasAccess, loading: accessLoading } = useAccess();
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -145,7 +145,7 @@ export function FloatingChat() {
           aria-label="Open AI health assistant chat"
           title="Open AI health assistant"
         >
-          {hasAccess ? (
+          {accessLoading || hasAccess ? (
             <MessageSquare className="h-6 w-6" aria-hidden="true" />
           ) : (
             <Lock className="h-5 w-5 text-teal-200" aria-hidden="true" />
@@ -269,7 +269,7 @@ export function FloatingChat() {
             )}
 
             {/* Suggestion Chips (Shown only when initial chat welcome) */}
-            {messages.length === 1 && !isLoading && !isTierGated && hasAccess && (
+            {messages.length === 1 && !isLoading && !isTierGated && (accessLoading || hasAccess) && (
               <div className="pt-2 space-y-2 max-w-[90%] mr-auto">
                 <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider px-1">
                   Suggested Queries
@@ -295,7 +295,7 @@ export function FloatingChat() {
           </div>
 
           {/* Input Form / Upgrade Billing Gate Overlay */}
-          {isTierGated || !hasAccess ? (
+          {isTierGated || (!accessLoading && !hasAccess) ? (
             <div className="p-5 border-t bg-slate-50 dark:bg-slate-900/40 border-t-slate-200 dark:border-t-slate-800 text-center space-y-2.5">
               <div className="mx-auto bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 h-9 w-9 rounded-full flex items-center justify-center">
                 <Lock className="h-4 w-4" />

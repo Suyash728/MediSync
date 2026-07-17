@@ -17,7 +17,7 @@ const AccessContext = createContext<AccessContextType | undefined>(undefined);
 export function AccessProvider({ children }: { children: React.ReactNode }) {
   const [isPaid, setIsPaid] = useState(false);
   const [trialEndsAt, setTrialEndsAt] = useState<string | null>(null);
-  const [hasAccess, setHasAccess] = useState(true); // Default to true to prevent flashes
+  const [hasAccess, setHasAccess] = useState(false); // Safe-closed; `loading` is the flash-guard
   const [loading, setLoading] = useState(true);
 
   const fetchAccess = useCallback(async () => {
@@ -37,19 +37,12 @@ export function AccessProvider({ children }: { children: React.ReactNode }) {
       setTrialEndsAt(res.trial_ends_at);
       setHasAccess(res.has_access);
     } catch (err: any) {
-      // ── Graceful Fallback for Local Dev / Testing ──────────────────────────
-      // If the FastAPI route does not exist yet (returns 404) or is blocked (401),
-      // we mock an active 7-day trial that has 5 days remaining, ensuring all
-      // premium RAG/summaries features are unlocked by default.
-      if (err?.status === 404 || err?.status === 401) {
-        const dummyTrialEnds = new Date();
-        dummyTrialEnds.setDate(dummyTrialEnds.getDate() + 5); // 5 days left
-        setIsPaid(false);
-        setTrialEndsAt(dummyTrialEnds.toISOString());
-        setHasAccess(true);
-      } else {
-        console.error("Error fetching patient access layer status:", err);
-      }
+      // Safe-closed on any fetch error: paid features must fail locked, not
+      // open. Free surfaces don't read hasAccess, so this has no effect on them.
+      setIsPaid(false);
+      setTrialEndsAt(null);
+      setHasAccess(false);
+      console.error("Error fetching patient access layer status:", err);
     } finally {
       setLoading(false);
     }
