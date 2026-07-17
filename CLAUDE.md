@@ -206,3 +206,11 @@ the fix with zero code changes of their own (single shared call site).
 Re-verified: zero-record user → `suggestions: []` and chat `refused: true` (previously
 returned another patient's data in both). Demo account's legitimate retrieval confirmed
 unaffected (positive control).
+
+### Phase B2 complete (floating chat panel)
+Floating chat panel UI implemented and wired live against backend `/chat/` endpoint (FastAPI RAG). Renders source citations linking to `/record/[record_id]`, formats refusal states in warning style, handles 402 tier gating via a lock placeholder upgrading overlay card, and displays the underlying LLM provider under assistant messages.
+
+### Phase B3 complete (Access Layer & Billing Gating)
+Client-side access controls landed: `useAccess` context hook queries `GET /profile/access/` with active trial mock fallbacks for local dev.
+Gated paid surfaces: AI clinical summaries, TTS play button, Share link creation (`ShareDialog`), dashboard Checkup Suggestions (Phase B4 placeholder), and Floating Chat entry/panel.
+Ungated free surfaces: Document uploads, timeline/record viewing, drug-conflict alerts, language switching. Free workflows fail-open on fetch delays or route failures.
