@@ -39,7 +39,7 @@ async def get_access_status(
 ) -> AccessStatus:
     """Read is_paid and trial_ends_at from profiles; compute has_access.
 
-    Contract shape (API_CONTRACT.md):
+    Response shape:
       { is_paid: bool, trial_ends_at: string | null, has_access: bool }
     """
     supabase = get_supabase()

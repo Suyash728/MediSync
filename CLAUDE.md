@@ -160,8 +160,6 @@ Diet/lifestyle/workout advice was explicitly considered and cut — do not add i
 - Gating: `profiles.is_paid` boolean + `profiles.trial_ends_at` timestamp, toggled
   manually in Supabase table editor for demo — no real payment integration this phase
 
-**Respect API_CONTRACT.md** This file has the temprorary mock infrastructure plan, has this project's upcoming work in split between two developers working remotely on different git branches.
-
 **CLAUDE.md updates:** This file gets a short "Phase N update" append after every
 phase completes, so both agents always have current context without re-reading
 conversation history.

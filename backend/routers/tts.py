@@ -11,9 +11,7 @@ Flow:
      Sarvam synthesis + WAV concatenation + cache upload on a miss.
   4. Return the signed URL for the browser to play directly.
 
-NOTE: field is "language_code" (default "en-IN"), per explicit spec — this
-diverges from API_CONTRACT.md's POST /api/tts entry, which lists "language"
-with no default. Flag to the frontend track / update the contract doc.
+NOTE: request field is "language_code" (default "en-IN").
 """
 
 import logging

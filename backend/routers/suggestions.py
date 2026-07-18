@@ -75,7 +75,7 @@ async def get_suggestions(
     patient's profile row.  Returns an empty list when the patient has no
     uploaded records or suggestions have not been generated yet.
 
-    Contract shape (API_CONTRACT.md):
+    Response shape:
       { suggestions: [{text, based_on_record_id}], generated_at: string | null }
     """
     supabase = get_supabase()
@@ -118,7 +118,7 @@ async def refresh_suggestions(
     a new document upload.  It is idempotent: calling it multiple times overwrites
     the cache with a fresh result each time.
 
-    Contract shape (API_CONTRACT.md):
+    Response shape:
       { suggestions: [{text, based_on_record_id}], generated_at: string | null }
     """
     suggestions = await rag_svc.generate_checkup_suggestions(patient_id)
