@@ -2,8 +2,6 @@
 
 **A patient-controlled personal health record (PHR) platform that unifies fragmented medical documents into one structured, searchable, multilingual health timeline — with automatic drug-conflict detection and consent-based sharing.**
 
-Built for CodeFusion 2026 by **Team Error404**.
-
 🔗 **Live App:** https://medi-sync-livid.vercel.app
 
 🔑 **Demo login:** `demo@medisync.app` / `Demo@2026`
@@ -191,20 +189,8 @@ We believe transparency about limitations is part of building a trustworthy heal
 - **Native mobile app** (React Native) for the patient-facing experience, complementing the web clinician view
 - **Family/dependent profiles** for managing a household's records under one account
 
-## Team
-
-**Team Error404**
-- Suyash Kerkar — Full-stack development, AI pipeline, deployment
-- Arya Jadhav — Team lead
-
-Built on top of and extending our earlier project, **MedInsight** (https://github.com/Suyash728/MedInsight) — a multilingual medical report summarizer that served as the foundation for MediSync's OCR/NER/LLM pipeline.
-
 ## Acknowledgements & Attribution
 
 - Document parsing and summarization pipeline adapted from our own prior project, [MedInsight](https://github.com/Suyash728/MedInsight)
 - Drug interaction and reference range datasets independently curated for this project
 - All third-party APIs and models used are disclosed in the [Tech Stack](#tech-stack) section above
-
-## License
-
-This project is licensed under the **PolyForm Noncommercial License 1.0.0** — free to use, study, and build upon for personal, educational, research, and noncommercial purposes (this explicitly includes evaluation by hackathon judges and educational institutions). Commercial use requires separate permission. See [`LICENSE`](./LICENSE) for full terms.
